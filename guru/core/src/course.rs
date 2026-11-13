@@ -104,6 +104,11 @@ pub struct Course {
     pub created_unix: u64,
     /// Codex version that generated the package.
     pub generator: String,
+    /// When the course is a stage of a goal roadmap: the roadmap's context
+    /// (destination, standards, earlier stages) so every asset stays coherent.
+    pub goal_context: String,
+    pub goal_slug: String,
+    pub stage_id: String,
 }
 
 impl Course {
@@ -159,6 +164,8 @@ pub struct SimResult {
     pub objectives_done: u32,
     pub objectives_total: u32,
     pub hints_used: u32,
+    /// Objectives the learner asked Guru to show (no credit, but no dead end).
+    pub revealed: u32,
     pub seconds: u32,
 }
 
@@ -216,6 +223,7 @@ impl Progress {
         };
         // Using hints is fine, but it is weaker evidence of independent skill.
         let score = (ratio - 0.1 * r.hints_used as f32).clamp(0.0, 1.0);
+        // `objectives_done` already excludes revealed objectives.
         for s in skills {
             self.evidence(s, score);
         }
@@ -413,6 +421,7 @@ mod tests {
                 objectives_total: 3,
                 hints_used: 2,
                 seconds: 60,
+                ..Default::default()
             },
         );
         assert!((get(&p.mastery, "b").unwrap() - 0.8).abs() < 1e-6);

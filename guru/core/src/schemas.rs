@@ -38,6 +38,19 @@ pub(crate) fn obj(props: &[(&str, Value)]) -> Value {
 }
 
 const NODE_STATUS: &[&str] = &["healthy", "degraded", "down", "compromised", "unknown"];
+/// Effects can change world nodes or workbench items.
+const EFFECT_STATUS: &[&str] = &[
+    "healthy",
+    "degraded",
+    "down",
+    "compromised",
+    "unknown",
+    "ok",
+    "fault",
+    "warning",
+    "off",
+    "on",
+];
 
 pub fn scope() -> Value {
     let level = obj(&[("hours", num()), ("can_do", s())]);
@@ -56,9 +69,54 @@ fn sim_plan() -> Value {
     obj(&[
         ("id", s()),
         ("title", s()),
-        ("kind", one_of(&["incident", "tool", "guided", "roleplay"])),
+        (
+            "kind",
+            one_of(&["incident", "tool", "guided", "roleplay", "workbench"]),
+        ),
         ("tool", s()),
         ("premise", s()),
+    ])
+}
+
+pub fn clarify() -> Value {
+    obj(&[
+        ("restated_goal", s()),
+        ("field", s()),
+        (
+            "questions",
+            arr(obj(&[
+                ("id", s()),
+                ("question", s()),
+                ("why", s()),
+                ("options", arr(s())),
+            ])),
+        ),
+    ])
+}
+
+pub fn goal_plan() -> Value {
+    obj(&[
+        ("title", s()),
+        ("field", s()),
+        ("destination", s()),
+        ("standards", arr(s())),
+        ("tools", arr(s())),
+        ("safety", arr(s())),
+        ("beyond_guru", arr(s())),
+        (
+            "stages",
+            arr(obj(&[
+                ("id", s()),
+                ("title", s()),
+                ("why", s()),
+                ("level", int()),
+                ("hours", num()),
+                ("outcomes", arr(s())),
+                ("competencies", arr(s())),
+                ("practice", arr(s())),
+                ("assessment", s()),
+            ])),
+        ),
     ])
 }
 
@@ -128,11 +186,22 @@ pub fn module() -> Value {
 fn effects() -> Value {
     obj(&[
         ("set_flags", arr(s())),
+        ("clear_flags", arr(s())),
         (
             "node_status",
-            arr(obj(&[("node_id", s()), ("status", one_of(NODE_STATUS))])),
+            arr(obj(&[("node_id", s()), ("status", one_of(EFFECT_STATUS))])),
         ),
         ("message", s()),
+    ])
+}
+
+fn button() -> Value {
+    obj(&[
+        ("label", s()),
+        ("message", s()),
+        ("effects", effects()),
+        ("requires", arr(s())),
+        ("blocked_message", s()),
     ])
 }
 
@@ -185,7 +254,23 @@ fn widgets() -> Value {
             ]))),
             ("fallback", s()),
         ]),
-        widget("actions", &[("buttons", arr(obj(&[("label", s()), ("message", s()), ("effects", effects())])))]),
+        widget("actions", &[("buttons", arr(button()))]),
+        widget("workbench", &[
+            ("text", s()),
+            ("tools", arr(s())),
+            ("items", arr(obj(&[
+                ("id", s()),
+                ("label", s()),
+                ("kind", s()),
+                ("status", one_of(&["ok", "fault", "warning", "off", "on", "unknown"])),
+                ("detail", s()),
+                ("x", num()),
+                ("y", num()),
+                ("readings", arr(obj(&[("tool", s()), ("requires", arr(s())), ("value", s()), ("effects", effects())]))),
+                ("actions", arr(button())),
+            ]))),
+            ("links", arr(obj(&[("from", s()), ("to", s()), ("label", s())]))),
+        ]),
         widget("editor", &[
             ("language", s()),
             ("path", s()),
@@ -206,7 +291,10 @@ pub fn simulation() -> Value {
     obj(&[
         ("id", s()),
         ("title", s()),
-        ("kind", one_of(&["incident", "tool", "guided", "roleplay"])),
+        (
+            "kind",
+            one_of(&["incident", "tool", "guided", "roleplay", "workbench"]),
+        ),
         ("tool", s()),
         ("minutes", int()),
         ("skill_ids", arr(s())),
@@ -375,6 +463,8 @@ mod tests {
     fn all_schemas_are_strict() {
         for (name, schema) in [
             ("scope", scope()),
+            ("clarify", clarify()),
+            ("goal_plan", goal_plan()),
             ("plan", plan()),
             ("module", module()),
             ("simulation", simulation()),
@@ -429,9 +519,7 @@ mod tests {
                 _ => {}
             }
         }
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../ui/demo/sims");
-        for e in std::fs::read_dir(dir).unwrap() {
-            let p = e.unwrap().path();
+        for p in crate::sim::tests::demo_sim_paths() {
             let v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
             check(&v, &simulation(), &p.display().to_string());
         }

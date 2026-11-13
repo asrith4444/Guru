@@ -126,15 +126,36 @@ export function renderSimPlayer(root, spec, { onExit, onAskAI, aiAvailable }) {
     clear(objectivesEl);
     for (const o of spec.objectives || []) {
       const done = engine.objectiveDone(o);
-      const item = h('div', { class: `objective ${done ? 'done' : ''}` }, h('div', { class: 'obj-head' }, h('span', { class: 'check', 'aria-hidden': 'true' }, done ? '✓' : o.kind === 'state' ? '○' : '?'), h('span', null, o.text)));
-      if (o.kind === 'answer' && !done) item.append(answerForm(o));
-      if (done && o.explanation) item.append(h('p', { class: 'explain' }, o.explanation));
-      if (o.kind === 'state' && !done) item.append(h('p', { class: 'muted small' }, 'Do it in the terminal or tools.'));
+      const revealed = !done && engine.revealed.has(o.id);
+      const item = h(
+        'div',
+        { class: `objective ${done ? 'done' : ''} ${revealed ? 'revealed' : ''}` },
+        h('div', { class: 'obj-head' }, h('span', { class: 'check', 'aria-hidden': 'true' }, done ? '✓' : revealed ? '👁' : o.kind === 'state' ? '○' : '?'), h('span', null, o.text))
+      );
+      if (o.kind === 'answer' && !done && !revealed) item.append(answerForm(o));
+      if ((done || revealed) && o.explanation) item.append(h('p', { class: 'explain' }, revealed ? h('b', null, 'Shown: ') : null, o.explanation));
+      if (o.kind === 'state' && !done && !revealed) item.append(h('p', { class: 'muted small' }, 'Do it in the terminal or tools.'));
+      // No dead ends: after the hints, or a few wrong answers, Guru can show the way.
+      const stuck = engine.hintsUsed >= (spec.hints || []).length || (engine.answers[o.id]?.attempts || 0) >= 2;
+      if (!done && !revealed && stuck)
+        item.append(
+          h(
+            'button',
+            {
+              class: 'btn tiny ghost',
+              onclick: () => {
+                engine.reveal(o.id);
+              },
+              title: 'Shows the answer and how to do it. No credit for this objective.',
+            },
+            'Show me how'
+          )
+        );
       objectivesEl.append(item);
     }
     const p = engine.progress();
-    progressLabel.textContent = `${p.done}/${p.total} objectives`;
-    progressBar.firstChild.style.width = `${p.total ? (p.done / p.total) * 100 : 0}%`;
+    progressLabel.textContent = `${p.done}/${p.total} objectives${p.closed > p.done ? ` (+${p.closed - p.done} shown)` : ''}`;
+    progressBar.firstChild.style.width = `${p.total ? (p.closed / p.total) * 100 : 0}%`;
     hintBtn.disabled = engine.hintsUsed >= (spec.hints || []).length;
     if (p.complete && !finished) {
       finished = true;
@@ -158,6 +179,7 @@ export function renderSimPlayer(root, spec, { onExit, onAskAI, aiAvailable }) {
     const submit = () => {
       const r = engine.answer(o.id, read());
       if (!r.correct) {
+        if ((engine.answers[o.id]?.attempts || 0) >= 2) return renderObjectives();
         feedback.textContent = 'Not quite. Look for more evidence.';
         feedback.className = 'feedback bad';
       }
@@ -303,14 +325,86 @@ export function renderSimPlayer(root, spec, { onExit, onAskAI, aiAvailable }) {
       case 'form':
         return formWidget(w, card);
       case 'actions':
-        return card('w-actions', h('div', { class: 'row' }, (w.buttons || []).map((b) => h('button', { class: 'btn', onclick: () => { const m = engine.pressButton(b); if (m) toast(m); } }, b.label))));
+        return card('w-actions', h('div', { class: 'row' }, (w.buttons || []).map((b) => h('button', { class: 'btn', onclick: () => { const r = engine.pressButton(b); if (r.ok && r.message) toast(r.message, 'ok'); } }, b.label))));
       case 'editor':
         return editorWidget(w, card);
       case 'chat':
         return chatWidget(w, card);
+      case 'workbench':
+        return workbenchWidget(w, card);
       default:
         return card('', h('p', { class: 'muted' }, `Unsupported widget: ${w.type}`));
     }
+  }
+
+  // Physical work: pick an instrument, click a component, read it or act on it.
+  function workbenchWidget(w, card) {
+    const tools = ['Look', ...(w.tools || [])];
+    let tool = tools[1] || 'Look';
+    let selected = (w.items || [])[0];
+    const toolbar = h('div', { class: 'bench-tools', role: 'radiogroup', 'aria-label': 'Instrument' });
+    const drawTools = () =>
+      clear(toolbar).append(
+        h('span', { class: 'muted small' }, 'Instrument:'),
+        ...tools.map((t) => h('button', { class: `chip ${t === tool ? 'on' : ''}`, role: 'radio', 'aria-checked': t === tool, onclick: () => { tool = t; drawTools(); drawPanel(); } }, t === 'Look' ? '👁 Look' : t))
+      );
+    const canvas = h('div', { class: 'bench-canvas' });
+    const panel = h('div', { class: 'bench-panel' });
+    const notebook = h('ol', { class: 'bench-notes' });
+    const W = 1000;
+    const H = 380;
+    const pos = (it) => ({ x: 80 + (it.x / 100) * (W - 160), y: 40 + (it.y / 100) * (H - 80) });
+    const byId = Object.fromEntries((w.items || []).map((i) => [i.id, i]));
+    const drawCanvas = () => {
+      const links = (w.links || []).filter((l) => byId[l.from] && byId[l.to]).map((l) => {
+        const a = pos(byId[l.from]);
+        const b = pos(byId[l.to]);
+        return s('g', { class: 'bench-link' }, s('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y }), l.label ? s('text', { x: (a.x + b.x) / 2 + 6, y: (a.y + b.y) / 2 - 4 }, l.label) : null);
+      });
+      const items = (w.items || []).map((it) => {
+        const p = pos(it);
+        const st = engine.nodeStatus[it.id] || it.status;
+        return s(
+          'g',
+          { class: `bench-item st-${st} ${selected === it ? 'selected' : ''}`, 'data-item': it.id, role: 'button', 'aria-label': `${it.label}, ${st}`, transform: `translate(${p.x},${p.y})`, tabindex: 0, onclick: () => { selected = it; draw(); }, onkeydown: (e) => e.key === 'Enter' && ((selected = it), draw()) },
+          s('title', null, `${it.label} (${it.kind}): ${st}`),
+          s('rect', { x: -78, y: -26, width: 156, height: 52, rx: 10 }),
+          s('circle', { class: 'lamp', cx: -62, cy: 0, r: 6 }),
+          s('text', { class: 'label', x: -48, y: -3 }, it.label.length > 19 ? it.label.slice(0, 18) + '…' : it.label),
+          s('text', { class: 'sub', x: -48, y: 14 }, `${it.kind.length > 16 ? it.kind.slice(0, 15) + '…' : it.kind} · ${st}`)
+        );
+      });
+      clear(canvas).append(s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'bench-svg', role: 'img', 'aria-label': w.title || 'Workbench' }, links, items));
+    };
+    const note = (who, text, cls = '') => {
+      notebook.prepend(h('li', { class: cls }, h('b', null, who), ' ', text));
+    };
+    const drawPanel = () => {
+      clear(panel);
+      if (!selected) return;
+      const st = engine.nodeStatus[selected.id] || selected.status;
+      panel.append(
+        h('div', { class: 'row spread' }, h('h3', null, selected.label), h('span', { class: `chip st-${st}` }, st)),
+        h('p', { class: 'muted small' }, selected.kind, ' · ', selected.detail),
+        h('div', { class: 'row' }, h('button', { class: 'btn primary small', onclick: () => { const v = engine.inspect(selected, tool); note(`${selected.label} · ${tool}:`, v); draw(); } }, tool === 'Look' ? 'Look closely' : `Measure with ${tool}`)),
+        (selected.actions || []).length ? h('div', { class: 'bench-actions' }, (selected.actions || []).map((a) => {
+          const missing = engine.missing(a.requires);
+          return h('button', { class: `btn small ${missing.length ? 'guarded' : ''}`, title: missing.length ? 'Not safe or not possible yet' : '', onclick: () => {
+            const r = engine.pressButton(a);
+            note(`${selected.label} · ${a.label}:`, r.message, r.ok ? 'ok' : 'blocked');
+            draw();
+          } }, missing.length ? '⚠ ' : '', a.label);
+        })) : null
+      );
+    };
+    const draw = () => {
+      drawCanvas();
+      drawPanel();
+    };
+    drawTools();
+    draw();
+    engine.on((kind) => kind === 'node' && drawCanvas());
+    return card('w-wide w-bench', w.text ? h('p', { class: 'muted small' }, w.text) : null, toolbar, canvas, h('div', { class: 'bench-under' }, panel, h('div', { class: 'bench-log' }, h('b', { class: 'small' }, 'Notebook (latest first)'), notebook)));
   }
 
   function queryWidget(w, card) {
@@ -390,8 +484,13 @@ export function renderSimPlayer(root, spec, { onExit, onAskAI, aiAvailable }) {
   function showDebrief() {
     const r = engine.result();
     modal(
-      'Scenario solved',
-      h('div', null, h('p', { class: 'lead' }, `All ${r.objectives_total} objectives in ${fmtMinutes(r.seconds)}${r.hints_used ? `, ${r.hints_used} hint(s)` : ', no hints'}.`), renderMarkdown(spec.debrief)),
+      r.revealed ? 'Scenario complete' : 'Scenario solved',
+      h(
+        'div',
+        null,
+        h('p', { class: 'lead' }, `${r.objectives_done} of ${r.objectives_total} objectives solved on your own in ${fmtMinutes(r.seconds)}${r.hints_used ? `, ${r.hints_used} hint(s)` : ', no hints'}${r.revealed ? `; ${r.revealed} shown by Guru. Replay it later to earn those yourself.` : '.'}`),
+        renderMarkdown(spec.debrief)
+      ),
       [{ label: 'Keep exploring' }, { label: 'Finish', primary: true, onClick: () => exit(true) }]
     );
   }
@@ -414,13 +513,14 @@ export function renderSimPlayer(root, spec, { onExit, onAskAI, aiAvailable }) {
 
   engine.on((kind, data) => {
     if (kind === 'toast') toast(data, 'ok');
+    if (kind === 'blocked' && data) toast(data, 'bad');
     if (kind === 'flag' || kind === 'objective') renderObjectives();
     if (kind === 'node') renderWorld();
   });
 
   renderObjectives();
   // Tool simulations open on the tool; incidents on the first terminal.
-  const first = (spec.kind === 'tool' && tabs.find((t) => t.id.startsWith('app:'))) || tabs.find((t) => t.id.startsWith('term:')) || tabs[0];
+  const first = (['tool', 'workbench'].includes(spec.kind) && tabs.find((t) => t.id.startsWith('app:'))) || tabs.find((t) => t.id.startsWith('term:')) || tabs[0];
   if (first) select(first.id);
   else renderWorld();
   return engine;

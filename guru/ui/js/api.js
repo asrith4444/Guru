@@ -21,18 +21,18 @@ export async function listen(event, fn) {
 const mockListeners = {};
 const emit = (event, payload) => (mockListeners[event] || []).forEach((fn) => fn(payload));
 const courses = new Map(); // slug -> { course, modules, sims, progress, deck }
-let demoCache;
 
-async function loadDemo() {
-  if (demoCache) return demoCache;
-  const get = (p) => fetch(`demo/${p}`).then((r) => r.json());
+const demoCache = {};
+async function loadDemo(name = 'incident-response') {
+  if (demoCache[name]) return demoCache[name];
+  const get = (p) => fetch(`demo/${name}/${p}`).then((r) => r.json());
   const course = await get('course.json');
   const modules = {};
   for (const m of course.modules) modules[m.id] = await get(`modules/${m.id}.json`);
   const sims = {};
   for (const m of course.modules) for (const s of m.sims) sims[s.id] = await get(`sims/${s.id}.json`);
-  demoCache = { course, modules, sims };
-  return demoCache;
+  demoCache[name] = { course, modules, sims };
+  return demoCache[name];
 }
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -88,6 +88,7 @@ function offlineScope(topic) {
 }
 
 const downloading = new Set();
+const goals = new Map();
 const slugOf = (topic) => (topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'course').slice(0, 40);
 
 async function mock(cmd, a) {
@@ -109,7 +110,7 @@ async function mock(cmd, a) {
     case 'open_url':
       return null;
     case 'install_demo': {
-      const d = await loadDemo();
+      const d = await loadDemo(a.name === 'electrical' ? 'electrical' : 'incident-response');
       const slug = d.course.slug;
       if (!courses.has(slug)) courses.set(slug, { course: clone(d.course), modules: clone(d.modules), sims: clone(d.sims), progress: emptyProgress(), deck: deckFrom(d.modules) });
       return slug;
@@ -155,6 +156,7 @@ async function mock(cmd, a) {
     case 'record_sim': {
       const p = courses.get(a.slug).progress;
       const r = a.result;
+      r.revealed = r.revealed || 0;
       const ratio = r.objectives_total ? r.objectives_done / r.objectives_total : 0;
       for (const s of a.skills) evidence(p, s, Math.max(0, Math.min(1, ratio - 0.1 * r.hints_used)));
       const old = get(p.sims, a.simId);
@@ -170,6 +172,59 @@ async function mock(cmd, a) {
       c.due_day = a.grade === 4 ? 3 : 1;
       return false;
     }
+    case 'clarify_goal':
+      await new Promise((r) => setTimeout(r, 400));
+      return {
+        restated_goal: a.goal,
+        field: 'Browser preview',
+        questions: [
+          { id: 'q1', question: 'What is your experience in this field today?', why: 'Decides where the roadmap starts', options: ['None', 'Hobbyist / DIY', 'Working in an adjacent role', 'Already working in it'] },
+          { id: 'q2', question: 'What is it for?', why: 'A job, a licence and a home project need different depth', options: ['A job or career change', 'A licence or certification', 'My own home or project', 'Curiosity'] },
+          { id: 'q3', question: 'Which country or standards apply?', why: 'Codes and licensing differ between countries', options: ['UK / EU', 'United States', 'India', 'Other'] },
+        ],
+      };
+    case 'plan_goal': {
+      await new Promise((r) => setTimeout(r, 600));
+      const slug = slugOf(a.goal).slice(0, 30) || 'goal';
+      const plan = {
+        slug,
+        goal: a.goal,
+        answers: a.answers,
+        title: a.goal,
+        field: 'Browser preview roadmap',
+        destination: 'In the desktop app, Codex writes a professional roadmap here: concrete tasks, quality bar and tools of the trade.',
+        standards: ['Real standards and codes of the field (e.g. BS 7671, NEC, IEEE 1800)'],
+        tools: ['Instruments and software of the trade, simulated in Guru'],
+        safety: ['Safety-critical rules of the field, enforced in simulations'],
+        beyond_guru: ['Licences, exams and supervised hours that a course cannot replace'],
+        stages: [
+          { id: 's1', title: 'Foundations and safety', why: 'Everything later depends on it', level: 30, hours: 2, outcomes: ['Explain the core principles', 'Work safely'], competencies: ['Safe practice'], practice: ['Workbench: find a fault safely'], assessment: 'Simulation with safety checks', course_slug: '' },
+          { id: 's2', title: 'Core professional tasks', why: 'The work people are paid for', level: 60, hours: 3.5, outcomes: ['Do the common jobs unaided'], competencies: ['Diagnosis', 'Tools'], practice: ['Realistic jobs with real instruments'], assessment: 'Capstone job', course_slug: '' },
+          { id: 's3', title: 'Advanced diagnosis', why: 'What separates professionals', level: 85, hours: 5, outcomes: ['Solve unusual faults'], competencies: ['Systematic fault finding'], practice: ['Intermittent fault scenarios'], assessment: 'Timed incident', course_slug: '' },
+        ],
+        created_unix: Date.now() / 1000,
+      };
+      goals.set(slug, plan);
+      return plan;
+    }
+    case 'list_goals':
+      return [...goals.values()];
+    case 'get_goal': {
+      const plan = goals.get(a.slug);
+      if (!plan) throw 'goal not found';
+      return { plan, stages: plan.stages.map((st) => ({ stage: st, card: st.course_slug && courses.has(st.course_slug) ? cardFor(courses.get(st.course_slug), downloading.has(st.course_slug)) : null })) };
+    }
+    case 'delete_goal':
+      goals.delete(a.slug);
+      return null;
+    case 'download_stage': {
+      const plan = goals.get(a.goalSlug);
+      const st = plan.stages.find((x) => x.id === a.stageId);
+      if (st.course_slug) return st.course_slug;
+      st.course_slug = slugOf(st.title);
+      mockDownload({ topic: st.title, goal: st.outcomes.join('; '), level: st.level, hours: st.hours, goal_slug: plan.slug, stage_id: st.id });
+      return st.course_slug;
+    }
     case 'ask_guru':
       return 'Browser preview: in the desktop app this question goes to Codex (your ChatGPT sign-in).';
     case 'ai_command':
@@ -183,7 +238,7 @@ async function mockDownload(req) {
   const d = await loadDemo();
   const slug = slugOf(req.topic);
   const course = clone(d.course);
-  Object.assign(course, { slug, title: req.topic, topic: req.topic, goal: req.goal, level: req.level, hours: req.hours, status: 'downloading', generator: 'browser preview' });
+  Object.assign(course, { slug, title: req.topic, topic: req.topic, goal: req.goal, level: req.level, hours: req.hours, status: 'downloading', generator: 'browser preview', goal_slug: req.goal_slug || '', stage_id: req.stage_id || '' });
   const entry = { course, modules: {}, sims: {}, progress: emptyProgress(), deck: [] };
   courses.set(slug, entry);
   downloading.add(slug);

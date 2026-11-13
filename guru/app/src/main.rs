@@ -24,6 +24,7 @@ use guru_core::course::CourseStatus;
 use guru_core::course::Package;
 use guru_core::course::SimResult;
 use guru_core::generator;
+use guru_core::goal;
 use guru_core::machine::MachineProfile;
 use guru_core::prompts;
 use guru_core::scope::Scope;
@@ -199,6 +200,8 @@ fn start_download(
     if request.topic.trim().is_empty() {
         return Err("Tell Guru what you want to learn.".into());
     }
+    // Refuse up front rather than fail half-way.
+    generator::preflight(&Codex::from_config(&Config::load())).map_err(err)?;
     let pkg = generator::create(&request).map_err(err)?;
     let slug = pkg.course().map_err(err)?.slug;
     spawn_download(app, &state, pkg)?;
@@ -207,8 +210,82 @@ fn start_download(
 
 #[tauri::command]
 fn resume_download(app: AppHandle, state: State<'_, AppState>, slug: String) -> CmdResult<()> {
+    generator::preflight(&Codex::from_config(&Config::load())).map_err(err)?;
     let pkg = Package::open(&slug).map_err(err)?;
     spawn_download(app, &state, pkg)
+}
+
+// ---------- goals: "What's your goal?" → questions → roadmap ----------
+
+#[tauri::command]
+async fn clarify_goal(goal: String) -> CmdResult<goal::Clarification> {
+    if goal.trim().len() < 3 {
+        return Err("Tell Guru your goal in a few words.".into());
+    }
+    blocking(move || {
+        let codex = Codex::from_config(&Config::load());
+        generator::preflight(&codex).map_err(err)?;
+        goal::clarify(&codex, &goal).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn plan_goal(goal: String, answers: Vec<goal::Answer>) -> CmdResult<goal::GoalPlan> {
+    blocking(move || {
+        let codex = Codex::from_config(&Config::load());
+        goal::plan(&codex, &goal, answers).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+fn list_goals() -> Vec<goal::GoalPlan> {
+    goal::list()
+}
+
+#[tauri::command]
+fn get_goal(slug: String) -> CmdResult<Value> {
+    let plan = goal::load(&slug).map_err(err)?;
+    // Progress per stage from its downloaded course, if any.
+    let stages: Vec<Value> = plan
+        .stages
+        .iter()
+        .map(|st| {
+            let card = (!st.course_slug.is_empty())
+                .then(|| Package::open(&st.course_slug).ok())
+                .flatten()
+                .and_then(|p| card_for(&p, false).ok());
+            json!({ "stage": st, "card": card })
+        })
+        .collect();
+    Ok(json!({ "plan": plan, "stages": stages }))
+}
+
+#[tauri::command]
+fn delete_goal(slug: String) -> CmdResult<()> {
+    goal::delete(&slug).map_err(err)
+}
+
+#[tauri::command]
+fn download_stage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    goal_slug: String,
+    stage_id: String,
+) -> CmdResult<String> {
+    let plan = goal::load(&goal_slug).map_err(err)?;
+    let stage = plan.stage(&stage_id).ok_or("unknown stage")?;
+    if !stage.course_slug.is_empty() && Package::open(&stage.course_slug).is_ok() {
+        return Ok(stage.course_slug.clone());
+    }
+    generator::preflight(&Codex::from_config(&Config::load())).map_err(err)?;
+    let req = plan.request_for(&stage_id).map_err(err)?;
+    let pkg = generator::create(&req).map_err(err)?;
+    let slug = pkg.course().map_err(err)?.slug;
+    goal::link_course(&goal_slug, &stage_id, &slug).map_err(err)?;
+    spawn_download(app, &state, pkg)?;
+    Ok(slug)
 }
 
 #[tauri::command]
@@ -329,32 +406,61 @@ fn delete_course(state: State<'_, AppState>, slug: String) -> CmdResult<()> {
     Package::open(&slug).and_then(Package::delete).map_err(err)
 }
 
-/// The built-in demo course ships inside the binary.
-const DEMO: &[(&str, &str)] = &[
-    ("course.json", include_str!("../../ui/demo/course.json")),
+/// The built-in demo courses ship inside the binary: (slug, [(path, contents)]).
+const DEMOS: &[(&str, &[(&str, &str)])] = &[
     (
-        "modules/m1.json",
-        include_str!("../../ui/demo/modules/m1.json"),
+        "demo-incident-response",
+        &[
+            (
+                "course.json",
+                include_str!("../../ui/demo/incident-response/course.json"),
+            ),
+            (
+                "modules/m1.json",
+                include_str!("../../ui/demo/incident-response/modules/m1.json"),
+            ),
+            (
+                "modules/m2.json",
+                include_str!("../../ui/demo/incident-response/modules/m2.json"),
+            ),
+            (
+                "sims/infected-web-01.json",
+                include_str!("../../ui/demo/incident-response/sims/infected-web-01.json"),
+            ),
+            (
+                "sims/grafana-alerting.json",
+                include_str!("../../ui/demo/incident-response/sims/grafana-alerting.json"),
+            ),
+        ],
     ),
     (
-        "modules/m2.json",
-        include_str!("../../ui/demo/modules/m2.json"),
-    ),
-    (
-        "sims/infected-web-01.json",
-        include_str!("../../ui/demo/sims/infected-web-01.json"),
-    ),
-    (
-        "sims/grafana-alerting.json",
-        include_str!("../../ui/demo/sims/grafana-alerting.json"),
+        "demo-electrical-fault-finding",
+        &[
+            (
+                "course.json",
+                include_str!("../../ui/demo/electrical/course.json"),
+            ),
+            (
+                "modules/e1.json",
+                include_str!("../../ui/demo/electrical/modules/e1.json"),
+            ),
+            (
+                "sims/rcd-kitchen.json",
+                include_str!("../../ui/demo/electrical/sims/rcd-kitchen.json"),
+            ),
+        ],
     ),
 ];
 
 #[tauri::command]
-fn install_demo() -> CmdResult<String> {
-    let slug = "demo-incident-response";
+fn install_demo(name: Option<String>) -> CmdResult<String> {
+    let (slug, files) = DEMOS
+        .iter()
+        .find(|(slug, _)| name.as_deref().map(|n| slug.contains(n)).unwrap_or(true))
+        .copied()
+        .ok_or("unknown demo")?;
     let pkg = Package::create(slug).map_err(err)?;
-    for (path, text) in DEMO {
+    for (path, text) in files {
         let dest = pkg.dir.join(path);
         if !dest.exists() {
             std::fs::write(&dest, text).map_err(err)?;
@@ -523,6 +629,8 @@ fn main() {
     if cfg!(target_os = "linux") && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
+    // Downloads cut off by a crash or shutdown become resumable, never stuck.
+    generator::recover_interrupted();
     tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
@@ -540,6 +648,12 @@ fn main() {
             get_sim,
             delete_course,
             install_demo,
+            clarify_goal,
+            plan_goal,
+            list_goals,
+            get_goal,
+            delete_goal,
+            download_stage,
             mark_read,
             record_quiz,
             record_sim,

@@ -227,6 +227,7 @@
      "output": "no crontab for root\n# (hint: system-wide jobs live in /etc/cron.d/)",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -236,6 +237,7 @@
      "output": "Proto Local Address        Foreign Address        State       PID/Program\ntcp   0.0.0.0:22           0.0.0.0:*              LISTEN      612/sshd\ntcp   0.0.0.0:8080         0.0.0.0:*              LISTEN      1880/java\ntcp   10.0.1.11:22         203.0.113.45:41822     ESTABLISHED 5120/sshd: deploy\ntcp   10.0.1.11:51544      192.0.2.77:3333        ESTABLISHED 4242/kworkerds\ntcp   10.0.1.11:40112      10.0.1.30:5432         ESTABLISHED 1880/java",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -245,6 +247,7 @@
      "output": "lrwxrwxrwx 1 root root 0 Nov 12 03:12 /proc/4242/exe -> /tmp/.x/kworkerds",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -254,6 +257,7 @@
      "output": "COMMAND    PID USER  FD   TYPE DEVICE SIZE/OFF   NODE NAME\nkworkerds 4242 root  txt    REG  259,1  2203648 393311 /tmp/.x/kworkerds\nkworkerds 4242 root    5u  IPv4 991231      0t0    TCP web-01:51544->192.0.2.77:3333 (ESTABLISHED)",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -265,6 +269,7 @@
       "set_flags": [
        "blocked:203.0.113.45"
       ],
+      "clear_flags": [],
       "node_status": [],
       "message": "Firewall: traffic from 203.0.113.45 is now dropped."
      }
@@ -276,6 +281,7 @@
       "set_flags": [
        "blocked:203.0.113.45"
       ],
+      "clear_flags": [],
       "node_status": [],
       "message": "Firewall: traffic from 203.0.113.45 is now dropped."
      }
@@ -287,6 +293,7 @@
       "set_flags": [
        "blocked:pool"
       ],
+      "clear_flags": [],
       "node_status": [],
       "message": "Outbound connection to the mining pool blocked."
      }
@@ -296,6 +303,7 @@
      "output": "Chain INPUT (policy ACCEPT)\ntarget     prot opt source               destination\n\nChain OUTPUT (policy ACCEPT)\ntarget     prot opt source               destination",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -307,6 +315,7 @@
       "set_flags": [
        "rotated:deploy"
       ],
+      "clear_flags": [],
       "node_status": [],
       "message": "deploy's password has been rotated."
      }
@@ -316,6 +325,7 @@
      "output": "               total        used        free      shared  buff/cache   available\nMem:            7951        2410         844          12        4697        5212\nSwap:              0           0           0",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -325,6 +335,7 @@
      "output": " 03:26:11 up 10 days,  5:41,  1 user,  load average: 4.12, 4.03, 3.20",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -334,6 +345,7 @@
      "output": "deploy   pts/1        203.0.113.45     Tue Nov 12 03:11   still logged in\ndeploy   pts/0        198.51.100.20    Mon Nov 11 17:02 - 17:40  (00:38)",
      "effects": {
       "set_flags": [],
+      "clear_flags": [],
       "node_status": [],
       "message": ""
      }
@@ -345,6 +357,7 @@
       "set_flags": [
        "killed:4242"
       ],
+      "clear_flags": [],
       "node_status": [],
       "message": "Process kworkerds (4242) terminated."
      }

@@ -17,9 +17,10 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "ui", "demo")
 
 # ---------- helpers that emit the full, strict shape ----------
 
-def effects(flags=(), node_status=(), message=""):
+def effects(flags=(), node_status=(), message="", clear=()):
     return {
         "set_flags": list(flags),
+        "clear_flags": list(clear),
         "node_status": [{"node_id": n, "status": s} for n, s in node_status],
         "message": message,
     }
@@ -319,6 +320,28 @@ def infected_sim():
 
 # ---------- simulation 2: Grafana + PromQL (tool) ----------
 
+def api_log():
+    lines = []
+    routes = [("GET", "/api/cart"), ("GET", "/api/products"), ("POST", "/api/checkout"), ("GET", "/healthz")]
+    for i in range(36):
+        m, sec = divmod(i * 9, 60)
+        method, route = routes[i % 4]
+        ms = random.randint(15, 70)
+        lines.append(log(f"03:{m:02d}:{sec:02d}", "info", f"{method} {route} 200 {ms}ms instance=api-{'ab'[i % 2]}"))
+    lines += [
+        log("03:02:11", "warn", "payment-provider slow response 1800ms (timeout 2000ms)"),
+        log("03:03:58", "warn", "payment-provider slow response 1950ms (timeout 2000ms)"),
+        log("03:04:40", "error", "POST /api/checkout 503 upstream payment-provider unavailable instance=api-a"),
+        log("03:04:41", "error", "POST /api/checkout 503 upstream payment-provider unavailable instance=api-b"),
+        log("03:04:52", "warn", "GC pause 310ms (heap 1.6G/2G) instance=api-b"),
+        log("03:05:02", "error", "circuit breaker OPEN for payment-provider (50% failures over 20 calls)"),
+        log("03:05:32", "info", "circuit breaker HALF_OPEN for payment-provider"),
+        log("03:05:33", "error", "POST /api/checkout 503 upstream payment-provider unavailable instance=api-a"),
+    ]
+    lines.sort(key=lambda l: l["ts"])
+    return lines
+
+
 def grafana_sim():
     req = noisy(120, 15, 30)
     err = [round(v, 2) for v in noisy(0.4, 0.3, 22) + noisy(6.5, 1.0, 8)]
@@ -352,15 +375,7 @@ def grafana_sim():
         },
         "hosts": [],
         "logs": [
-            {"id": "api", "name": "checkout-api · application log", "node_id": "api", "lines": [
-                log("03:00:01", "info", "GET /api/cart 200 41ms"),
-                log("03:00:03", "info", "GET /api/products 200 22ms"),
-                log("03:02:11", "warn", "payment-provider slow response 1800ms"),
-                log("03:04:40", "error", "POST /api/checkout 503 upstream payment-provider unavailable"),
-                log("03:04:41", "error", "POST /api/checkout 503 upstream payment-provider unavailable"),
-                log("03:05:02", "error", "circuit breaker OPEN for payment-provider"),
-                log("03:05:30", "info", "GET /api/cart 200 39ms"),
-            ]},
+            {"id": "api", "name": "checkout-api · application log", "node_id": "api", "lines": api_log()},
         ],
         "apps": [
             {
@@ -573,6 +588,22 @@ Alert: *CPU 97% on web-01*.
 - **`crontab -l` shows nothing, so I assumed no cron.** Cause: system-wide jobs live in `/etc/cron.d/` and `/etc/crontab`, not the user crontab.
 - **Rebooted to "fix" it.** Cause: you destroyed in-memory evidence and the persistence survives reboots anyway.
 
+## Evidence before eradication
+Every command you run changes the machine a little, and an attacker's process can delete itself when it notices you. A professional captures the minimum evidence *before* killing anything, in under two minutes:
+
+```
+ls -l /proc/4242/exe        # the real binary, even if renamed or deleted
+cat /proc/4242/cmdline | tr '\0' ' '   # full command line (pool, wallet)
+ls -l /proc/4242/cwd        # where it was started from
+ss -tnp | grep 4242         # who it talks to
+cp /tmp/.x/kworkerds /root/evidence/   # keep a copy (hash it with sha256sum)
+```
+
+Write down timestamps as you go: the incident report and any later forensics depend on them. In a regulated company, a suspected compromise usually triggers a formal incident process (security team, legal, sometimes regulators), so escalate early rather than quietly "fixing" it.
+
+## Scoping: is it just this host?
+The same credentials or the same weakness often exist elsewhere. Check the sibling servers for the same cron entry, the same login from the same IP, and the same outbound connection. In this scenario `web-02` shares the `deploy` user, so its `auth.log` deserves a look too. Rotate any credential the attacker may have seen, not only the one they used.
+
 ## Don't confuse it with
 A **legit kernel worker** (`[kworker/3:2]`) has no executable on disk and runs as a kernel thread. A **disguised process** has a real path in `/proc/PID/exe`.
 
@@ -614,6 +645,14 @@ Grafana stores no metrics. It asks a **data source** with a **query** and draws 
 - **Graph only goes up**: you plotted a raw counter. Wrap it in `rate()`.
 - **"expected type range vector"**: `rate()` needs a range like `[5m]`.
 - **Alert flaps all night**: pending period of 0s. Use `for: 5m`.
+
+## Reading a dashboard under pressure
+Start from **user-facing symptoms** (error ratio, latency, saturation of the thing users touch), then drill down to causes (CPU, memory, a dependency). The four golden signals from Google's SRE practice give a reliable order: **latency, traffic, errors, saturation**. Put them top-left on the on-call dashboard, in that order, with the same time range and a clear unit on every panel.
+
+Label discipline matters as much as the query: `status`, `route` and `instance` labels let you slice the same metric many ways, but an unbounded label (a user id, a full URL with query string) explodes the number of series and can take Prometheus down. Keep labels to values with a small, known set.
+
+## Alerts people will not mute
+An alert should mean *a human must act now*. Page on symptoms with a pending period (`for: 5m`), send causes to a ticket queue, and attach a runbook link in the annotations so the person woken at 3 a.m. knows the first three steps. Review every alert that fired after an incident: if nobody needed to act, delete it or raise its threshold.
 
 ## Don't confuse it with
 `rate()` (per-second average over the window, for graphs and alerts) vs `increase()` (total growth over the window, for "how many in the last hour").
@@ -677,6 +716,7 @@ def modules():
             {"skill_id": "dashboards", "front": "Why does http://localhost:9090 fail as a data source in containers?", "back": "localhost is the Grafana container itself; use the service name"},
             {"skill_id": "alerting", "front": "What does an alert's pending period (for) prevent?", "back": "Paging on brief spikes; it must stay true for the whole period"},
             {"skill_id": "triage", "front": "First command when a host's CPU alert fires?", "back": "top / ps aux --sort=-%cpu"},
+            {"skill_id": "dashboards", "front": "The four golden signals, in order?", "back": "Latency, traffic, errors, saturation"},
         ],
         "quiz": [
             q("m2q1", "single", "Your panel of http_requests_total only ever goes up. Fix?",
@@ -697,18 +737,332 @@ def modules():
     return [m1, m2]
 
 
-def main():
-    os.makedirs(os.path.join(OUT, "sims"), exist_ok=True)
-    os.makedirs(os.path.join(OUT, "modules"), exist_ok=True)
-    for sim in (infected_sim(), grafana_sim()):
-        with open(os.path.join(OUT, "sims", sim["id"] + ".json"), "w") as f:
+# ---------- course 2: a trade (electrical) with a workbench simulation ----------
+
+def btn(label, message="", flags=(), node_status=(), clear=(), requires=(), blocked=""):
+    return {"label": label, "message": message, "effects": effects(flags, node_status, message="", clear=clear),
+            "requires": list(requires), "blocked_message": blocked}
+
+
+def reading(tool, value, requires=(), flags=(), node_status=()):
+    return {"tool": tool, "requires": list(requires), "value": value, "effects": effects(flags, node_status)}
+
+
+def item(id, label, kind, status, detail, x, y, readings=(), actions=()):
+    return {"id": id, "label": label, "kind": kind, "status": status, "detail": detail, "x": x, "y": y,
+            "readings": list(readings), "actions": list(actions)}
+
+
+VT = "Two-pole voltage tester"
+PU = "Proving unit"
+IR = "Insulation resistance tester (500 V)"
+
+
+def appliance(id, label, ir_value, ok, x):
+    acts = [
+        btn("Unplug", f"{label} unplugged.", flags=[f"unplugged:{id}"], clear=[f"plugged:{id}"]),
+    ]
+    if ok:
+        acts.append(btn("Plug back in and switch on", f"{label} on. RCD 2 holds.", flags=[f"plugged:{id}", f"{id}_ok"],
+                        clear=[f"unplugged:{id}"], requires=["rcd_reset"],
+                        blocked="Nothing happens: the kitchen sockets are dead while RCD 2 is off."))
+    else:
+        acts.append(btn("Plug back in and switch on", "", flags=["kettle_trips"], clear=["rcd_reset", "unplugged:kettle"],
+                        node_status=[("rcd2", "off"), ("kitchen", "down")], requires=["rcd_reset"],
+                        blocked="Nothing happens: the kitchen sockets are dead while RCD 2 is off."))
+        acts[-1]["message"] = "Click, then BANG: RCD 2 trips the instant the kettle element heats. Kitchen dead again."
+        acts.append(btn("Label DO NOT USE and withdraw from service", "Kettle bagged and labelled 'DO NOT USE: failed insulation test 0.18 MΩ'. Customer informed.",
+                        flags=["kettle_withdrawn"], node_status=[("kettle", "off")], requires=["unplugged:kettle", "kettle_tested"],
+                        blocked="Test before you condemn: unplug it and confirm the fault with an insulation resistance test first."))
+    return item(id, label, "appliance (Class I)", "unknown", "Metal-bodied, earthed appliance on the kitchen ring.", x, 82,
+                readings=[
+                    reading(IR, ir_value, requires=[f"unplugged:{id}"], flags=[f"{id}_tested"] if ok else ["kettle_tested"],
+                            node_status=[(id, "ok" if ok else "fault")]),
+                    reading(IR, "Unplug the appliance before an insulation resistance test: never test equipment connected to the supply."),
+                    reading("Look", "Lead, plug and casing look intact." if ok else "Limescale around the element plate and a dried water stain under the base."),
+                ], actions=acts)
+
+
+def electrical_sim():
+    bench = {
+        "type": "workbench", "id": "bench", "title": "Consumer unit and kitchen ring",
+        "text": "Pick an instrument, then click a component to measure it, or use its action buttons. Readings change as you work.",
+        "tools": [VT, PU, IR],
+        "items": [
+            item("main", "Main switch 100 A", "isolator", "on", "Double-pole main switch for the whole installation.", 10, 18,
+                 readings=[reading("Look", "ON. Isolating here would kill the whole house, including the customer's freezer and alarm: isolate the smallest part that makes you safe.")]),
+            item("rcd2", "RCD 2 · 30 mA Type A", "rcd", "off", "Protects the kitchen ring (MCB 2) and the cooker circuit (MCB 3).", 32, 18,
+                 readings=[reading("Look", "Lever DOWN: tripped. Test button intact, no scorching.", requires=[]),
+                           reading(VT, "Measure at the outgoing circuit, not inside the consumer unit: that needs a qualified electrician and the cover off.")],
+                 actions=[btn("Reset RCD 2", "RCD 2 holds. Kitchen sockets are live again.", flags=["rcd_reset"],
+                              node_status=[("rcd2", "on"), ("kitchen", "healthy")],
+                              requires=["unplugged:kettle", "unplugged:toaster", "unplugged:fridge"],
+                              blocked="You push the lever up and it snaps straight back down: something connected is still leaking current to earth. Unplug every appliance on these circuits, then reset. Repeated resets into a fault wear the RCD's contacts.")]),
+            item("mcb2", "MCB 2 · B32 kitchen ring", "mcb", "on", "Overcurrent protection for the kitchen socket ring (2.5 mm² T&E).", 54, 18,
+                 readings=[reading("Look", "Lever UP (on). An MCB trips on overcurrent, not on earth leakage.")],
+                 actions=[btn("Switch OFF, lock off and tag", "MCB 2 locked off with your lock-off device and personal padlock; 'DANGER: men at work' tag fitted; key in your pocket.",
+                              flags=["ring_isolated", "ring_locked"], node_status=[("mcb2", "off")]),
+                          btn("Remove lock and switch ON", "Lock removed, MCB 2 back on.", clear=["ring_isolated", "ring_locked", "proved_dead"],
+                              node_status=[("mcb2", "on")], requires=["ring_locked"], blocked="It is not locked off.")]),
+            item("tester", "Two-pole tester (GS38)", "test instrument", "unknown", "Shrouded probes, fused leads. Prove it before AND after testing.", 80, 18,
+                 readings=[reading(PU, "Tester lights at 230 V on the proving unit: the tester is working.", flags=["tester_proved"]),
+                           reading("Look", "GS38 probes (≤4 mm exposed tip), leads undamaged. A tester is only trustworthy once proved on a known source.")]),
+            item("socket", "Double socket (worktop)", "socket outlet", "unknown", "13 A twin socket on the kitchen ring, above the worktop.", 54, 50,
+                 readings=[
+                     reading(VT, "L–N 0 V · L–E 0 V · N–E 0 V. Circuit proved dead. (Re-prove your tester on the proving unit to complete prove–test–prove.)",
+                             requires=["ring_isolated", "tester_proved"], flags=["proved_dead"]),
+                     reading(VT, "0 V on all three, but your tester has not been proved on a known source. A tester with a dead battery reads exactly like this.",
+                             requires=["ring_isolated"]),
+                     reading(VT, "L–N 231 V · L–E 230 V · N–E 1 V: LIVE.", requires=["rcd_reset"]),
+                     reading(VT, "0 V, but only because the RCD is off. Anyone could reset it while you work: that is not isolation."),
+                     reading("Look", "Faceplate secure, no scorching, no smell of burning."),
+                 ],
+                 actions=[btn("Remove faceplate and inspect terminals", "Terminals tight, conductors undamaged, CPC connected. The socket is not the fault.",
+                              flags=["faceplate_off"], requires=["ring_locked", "proved_dead"],
+                              blocked="STOP. Safe isolation is not complete (isolate, lock off, prove the tester, test dead L–N, L–E, N–E). Opening an accessory on an unproven circuit is how people are electrocuted: someone could reset the RCD while your fingers are on the terminals.")]),
+            appliance("kettle", "Kettle", "L+N to earth at 500 V DC: 0.18 MΩ. FAIL: below the 1 MΩ minimum for a Class I appliance.", False, 28),
+            appliance("toaster", "Toaster", "L+N to earth at 500 V DC: >299 MΩ. PASS.", True, 54),
+            appliance("fridge", "Fridge-freezer", "L+N to earth at 500 V DC: 48 MΩ. PASS.", True, 80),
+        ],
+        "links": [
+            {"from": "main", "to": "rcd2", "label": "busbar"},
+            {"from": "rcd2", "to": "mcb2", "label": ""},
+            {"from": "mcb2", "to": "socket", "label": "ring final"},
+            {"from": "socket", "to": "kettle", "label": "plug"},
+            {"from": "socket", "to": "toaster", "label": "plug"},
+            {"from": "socket", "to": "fridge", "label": "plug"},
+        ],
+    }
+    return {
+        "id": "rcd-kitchen",
+        "title": "Kitchen sockets dead: find the fault, safely",
+        "kind": "workbench",
+        "tool": "Consumer unit, two-pole tester, insulation resistance tester",
+        "minutes": 25,
+        "skill_ids": ["safe_isolation", "rcd_principles", "fault_finding", "insulation_testing"],
+        "briefing": (
+            "**Call-out, 07:52.** *“Half the kitchen went off when I made breakfast. I reset the switch twice and it keeps going off.”*\n\n"
+            "You are attending as an electrician's mate in a UK house (230 V, BS 7671). The consumer unit has a main switch, "
+            "two 30 mA RCDs and MCBs.\n\n"
+            "1. Work out **what** tripped and what kind of fault that means.\n"
+            "2. Find the cause **by test, not by guess**, and restore power.\n"
+            "3. Before opening anything, complete **safe isolation**. The simulation will stop you if you skip a step, "
+            "just as a good supervisor would.\n\n"
+            "Use the workbench in the *Apps* tab: choose an instrument, then click a component."
+        ),
+        "world": {
+            "nodes": [
+                node("supply", "Supply 230 V", "cloud", "healthy", "DNO supply, TN-C-S", 6, 50),
+                node("cu", "Consumer unit", "service", "degraded", "Main switch, RCD 1, RCD 2 (tripped)", 34, 50),
+                node("kitchen", "Kitchen ring", "client", "down", "Sockets dead", 64, 30),
+                node("cooker", "Cooker circuit", "client", "down", "Also on RCD 2", 64, 72),
+                node("customer", "Customer", "person", "unknown", "Needs the fridge back on", 92, 50),
+            ],
+            "links": [
+                {"from": "supply", "to": "cu", "label": "tails"},
+                {"from": "cu", "to": "kitchen", "label": "MCB 2"},
+                {"from": "cu", "to": "cooker", "label": "MCB 3"},
+            ],
+        },
+        "hosts": [],
+        "logs": [],
+        "apps": [{"id": "bench", "name": "Electrical workbench (simulated)", "node_id": "cu", "accent": "#f59e0b",
+                  "screens": [{"id": "cu", "title": "Consumer unit · kitchen", "widgets": [bench]}]}],
+        "objectives": [
+            objective("e1", "Read the consumer unit", "answer", question="What tripped, and what does that tell you?",
+                      options=["An MCB: an overload or short circuit", "The RCD: current is leaking to earth somewhere it protects",
+                               "The main switch: a supply fault", "Nothing: it is a power cut"], correct=[1],
+                      explanation="RCD 2's lever is down while the MCBs are up. An RCD trips when line and neutral currents differ (≥30 mA here), meaning current is returning through earth, or through a person."),
+            objective("e2", "Restore power without the faulty load", "state", flags=["rcd_reset"],
+                      explanation="Unplug everything on the RCD's circuits, then reset. If it holds, the fault is in something that was plugged in, not the fixed wiring."),
+            objective("e3", "Prove which appliance is faulty by test", "state", flags=["kettle_tested"],
+                      explanation="Plugging back one at a time points to a suspect; an insulation resistance test at 500 V DC (L+N to earth) proves it: 0.18 MΩ against a 1 MΩ minimum."),
+            objective("e4", "Name the culprit", "answer", question="Which item caused the trips?",
+                      options=["The worktop socket", "The kettle", "The toaster", "The fridge-freezer"], correct=[1],
+                      explanation="The kettle: a water-damaged element leaks to its earthed body. Heat and moisture make such faults appear only in use."),
+            objective("e5", "Inspect the socket under safe isolation", "state", flags=["ring_locked", "proved_dead", "faceplate_off"],
+                      explanation="Isolate (MCB 2), lock off and tag, prove the tester on a proving unit, test dead L–N, L–E, N–E, re-prove, and only then remove the faceplate."),
+            objective("e6", "Make the hazard safe for the customer", "state", flags=["kettle_withdrawn"],
+                      explanation="Withdraw it from use and label it with the reason, then tell the customer why. Never leave a known-faulty appliance where it will be used again."),
+        ],
+        "hints": [
+            "Look at the consumer unit first: which lever is down, an RCD or an MCB? They protect against different things.",
+            "Unplug the kettle, toaster and fridge, reset RCD 2, then plug them back one at a time. Confirm the suspect with the insulation resistance tester.",
+            "For the socket: MCB 2 → 'Switch OFF, lock off and tag'; Proving unit on the tester; Two-pole tester on the socket; then 'Remove faceplate'. Finish by withdrawing the kettle.",
+        ],
+        "debrief": (
+            "### What happened\n"
+            "The kettle's element sheath had cracked and taken in water. With the element hot, current leaked from line to the "
+            "kettle's earthed metal body. The difference between line and neutral current exceeded RCD 2's 30 mA rating, so it "
+            "disconnected in tens of milliseconds, which is exactly what it is for. The customer's two resets just kept re-energising the fault.\n\n"
+            "### How a professional approaches it\n"
+            "1. **Read the protective devices**: RCD (earth leakage) vs MCB (overcurrent) points to completely different causes.\n"
+            "2. **Split the problem**: all loads off → reset. Holds? The fault is in a load. Trips with everything unplugged? The fault "
+            "is in the fixed wiring: isolate circuits one by one and insulation-test the installation (qualified electrician work).\n"
+            "3. **Prove it by test**: insulation resistance at 500 V DC; Class I appliances should exceed 1 MΩ (IET Code of Practice "
+            "for in-service inspection and testing).\n"
+            "4. **Safe isolation, every time**: isolate → lock off & tag → prove tester → test dead (L–N, L–E, N–E) → re-prove tester. "
+            "HSE guidance GS38 covers the test equipment.\n\n"
+            "### Elsewhere in the world\n"
+            "North America uses **GFCI** devices (typically tripping at about 4–6 mA on 120 V receptacles) and NFPA 70E for safe work "
+            "practices; IEC countries use RCDs under IEC 60364. The method is the same.\n\n"
+            "### Know your limits\n"
+            "Resetting devices, unplugging appliances and withdrawing faulty equipment are safe for anyone. Opening accessories, "
+            "testing the fixed installation and repairs are work for a competent, qualified person. In the UK, much domestic "
+            "work is notifiable under Part P of the Building Regulations."
+        ),
+    }
+
+
+E1_LESSON = """## Why this matters
+A tripping RCD is the most common electrical call-out in homes. It is also where untrained people get hurt: they reset it again and again, or open a socket "because the power is off". A professional finds the cause in minutes and never works on anything they have not proved dead.
+
+## The mental model
+An **RCD** (residual current device) compares the current going out on the line conductor with the current coming back on neutral. In a healthy circuit they are equal. If they differ by more than the device's rating (30 mA for socket circuits under BS 7671 / IEC 60364), the missing current is flowing somewhere else, through earth or through a person, and the RCD disconnects, typically within 40 ms at five times its rating.
+
+```
+ L ──►──[ RCD compares L and N ]──►── appliance ──┐
+ N ──◄──[                       ]──◄──────────────┘
+                 leakage ──► earth (or a person)   ⇒  I(L) ≠ I(N)  ⇒  trip
+```
+
+An **MCB** (miniature circuit breaker) protects the cable from *overcurrent*: too much load, or a short circuit. Different device, different cause.
+
+## Worked example
+Call-out: kitchen sockets dead; in the consumer unit, RCD 2 is down and every MCB is up.
+
+1. RCD down, MCBs up → this is **earth leakage**, not overload.
+   > Pause and predict: if you unplug everything and the RCD then resets and holds, where must the fault be?
+2. Unplug every appliance on the circuits RCD 2 protects, then reset it. It holds, so the fault is in something that was plugged in, not in the fixed wiring.
+3. Plug appliances back **one at a time**, switching each on. The kettle trips it the moment its element heats.
+4. Confirm with an **insulation resistance test** at 500 V DC, line and neutral joined, to earth: 0.18 MΩ. A Class I appliance should read above 1 MΩ. Confirmed.
+5. Withdraw the kettle from use, label it, and explain to the customer.
+
+## The 20% you will use constantly
+| Situation | What it means | First move |
+|---|---|---|
+| RCD down, MCBs up | Earth leakage on that RCD's circuits | Unplug all loads, reset, add back one by one |
+| One MCB down | Overload or short on that circuit | Reduce load; if it trips instantly, suspect a short |
+| RCD trips with everything unplugged | Fault in the fixed installation | Qualified electrician: isolate circuits, insulation-test |
+| Trips only when wet or hot | Moisture or element fault | Test after use; check outdoor sockets and heaters |
+
+**Safe isolation, always in this order:** identify the circuit → isolate → lock off with your own padlock and tag → prove the two-pole tester on a known source (proving unit) → test dead L–N, L–E, N–E → re-prove the tester → only then work.
+
+## How it breaks
+- **Resetting repeatedly "until it holds"**: you keep re-energising a fault, and RCD contacts wear. One reset with loads removed tells you more.
+- **Testing with an unproved tester**: a flat battery shows 0 V on a live circuit. That is why prove–test–prove exists.
+- **Using a non-contact "pen" to prove dead**: fine as an indicator, never as proof. Use a GS38-compliant two-pole tester.
+- **Relying on the RCD being off as isolation**: anyone can reset it while you work. Lock off the circuit's own device.
+
+## Don't confuse it with
+**RCD vs MCB vs RCBO**: an RCD protects people from earth leakage, an MCB protects cables from overcurrent, and an **RCBO** does both for a single circuit (so one fault no longer takes out half the house). In North America the people-protection device at sockets is the **GFCI**, which trips at about 4–6 mA.
+
+## Cheat sheet
+- RCD trip = leakage to earth; MCB trip = too much current
+- All loads off → reset → back one at a time → confirm with an insulation test
+- Class I appliance insulation resistance: > 1 MΩ at 500 V DC
+- Safe isolation: isolate · lock · prove · test (L–N, L–E, N–E) · re-prove
+- Fixed-wiring faults and opening accessories: competent, qualified persons only
+"""
+
+
+def electrical_course():
+    return {
+        "format": 1,
+        "slug": "demo-electrical-fault-finding",
+        "title": "Electrical fault-finding: tripping RCDs (demo)",
+        "topic": "Domestic electrical fault-finding",
+        "goal": "Find why the power keeps tripping, safely, the way an electrician does",
+        "level": 40,
+        "level_label": "Beginner",
+        "hours": 1.0,
+        "summary": "A built-in sample from the trades: one lesson and one hands-on workbench simulation on a consumer unit, with real instruments, realistic readings and safe isolation enforced.",
+        "target_performance": "Diagnose a tripping RCD to the faulty appliance by test, apply safe isolation before touching anything, and leave the installation safe.",
+        "out_of_scope": ["Fixed-wiring repairs", "Consumer unit replacement", "Certification and Part P notification"],
+        "skills": [
+            {"id": "safe_isolation", "name": "Safe isolation", "why": "It is what keeps electricians alive", "weight": 10},
+            {"id": "rcd_principles", "name": "RCD vs MCB principles", "why": "Points you at the right cause immediately", "weight": 8},
+            {"id": "fault_finding", "name": "Systematic fault finding", "why": "Minutes instead of hours", "weight": 8},
+            {"id": "insulation_testing", "name": "Insulation resistance testing", "why": "Proves faults instead of guessing", "weight": 7},
+        ],
+        "modules": [
+            {"id": "e1", "title": "Safe isolation and RCD fault-finding", "minutes": 50,
+             "summary": "Read the consumer unit, split the problem, prove the fault by test, and never touch what you have not proved dead.",
+             "objectives": ["Tell an RCD trip from an MCB trip", "Find a leaking appliance by elimination and test", "Carry out safe isolation in the correct order"],
+             "skill_ids": ["safe_isolation", "rcd_principles", "fault_finding", "insulation_testing"],
+             "sims": [{"id": "rcd-kitchen", "title": "Kitchen sockets dead: find the fault, safely", "kind": "workbench",
+                       "tool": "Consumer unit, two-pole tester, insulation resistance tester", "premise": "Kettle with a water-damaged element trips a 30 mA RCD"}]},
+        ],
+        "capstone": {"id": "", "title": "", "kind": "", "tool": "", "premise": ""},
+        "research": {"stackexchange_site": "diy", "tags": ["electrical", "gfci"], "queries": ["rcd keeps tripping"]},
+        "status": "ready",
+        "status_detail": "",
+        "created_unix": 0,
+        "generator": "hand-written demo",
+    }
+
+
+def electrical_modules():
+    q = lambda id, kind, prompt, options, correct, accept, explanation, skill: {
+        "id": id, "kind": kind, "prompt": prompt, "options": options, "correct": correct,
+        "accept": accept, "explanation": explanation, "skill_id": skill}
+    return [{
+        "id": "e1", "title": "Safe isolation and RCD fault-finding", "lesson": E1_LESSON,
+        "key_points": [
+            "An RCD trips on leakage to earth; an MCB trips on overcurrent",
+            "Unplug all loads, reset once, then add loads back one at a time",
+            "Prove a suspect with an insulation test: Class I appliances > 1 MΩ at 500 V DC",
+            "Safe isolation: isolate, lock off, prove tester, test dead L–N/L–E/N–E, re-prove",
+            "An RCD being off is not isolation",
+        ],
+        "cards": [
+            {"skill_id": "rcd_principles", "front": "What does an RCD measure?", "back": "The difference between line and neutral current (residual current)"},
+            {"skill_id": "rcd_principles", "front": "Typical RCD rating for socket circuits under BS 7671?", "back": "30 mA"},
+            {"skill_id": "fault_finding", "front": "RCD trips even with every appliance unplugged. Where is the fault?", "back": "In the fixed installation: a job for a qualified electrician"},
+            {"skill_id": "insulation_testing", "front": "Minimum insulation resistance for a Class I appliance at 500 V DC?", "back": "1 MΩ"},
+            {"skill_id": "safe_isolation", "front": "The three test combinations when proving dead?", "back": "L–N, L–E, N–E"},
+            {"skill_id": "safe_isolation", "front": "Why prove the tester before AND after testing dead?", "back": "A faulty tester (e.g. flat battery) shows 0 V on a live circuit"},
+        ],
+        "quiz": [
+            q("e1q1", "single", "Kitchen sockets are dead. RCD 2 is down; all MCBs are up. What kind of fault is this?",
+              ["Overload", "Earth leakage", "Supply failure", "Loose neutral at the main fuse"], [1], [],
+              "An RCD trips on residual (leakage) current; an MCB trips on overcurrent.", "rcd_principles"),
+            q("e1q2", "single", "Everything is unplugged and the RCD now resets and holds. Where is the fault most likely?",
+              ["Fixed wiring", "An appliance that was plugged in", "The RCD itself", "The supply company's side"], [1], [],
+              "Removing the loads removed the leakage, so the leak was in a load.", "fault_finding"),
+            q("e1q3", "multi", "Which steps belong to safe isolation? (select all)",
+              ["Lock off and tag the circuit's device", "Prove the tester on a known source", "Test dead L–N, L–E and N–E", "Confirm dead with a non-contact pen and start work"],
+              [0, 1, 2], [], "A non-contact detector is an indicator only; proving dead needs a proved two-pole tester.", "safe_isolation"),
+            q("e1q4", "text", "What residual current rating (in mA) is typical for RCDs protecting UK socket circuits?", [], [], [r"^\s*30\s*(ma|milliamps?)?\s*$"],
+              "30 mA: low enough to protect people from electric shock.", "rcd_principles"),
+            q("e1q5", "single", "A kettle reads 0.18 MΩ (L+N to earth, 500 V DC). What do you do?",
+              ["Keep using it: it boils fine", "Retest at 250 V and keep it if it passes", "Withdraw it from use and label it", "Replace the RCD with a 100 mA one"], [2], [],
+              "It fails the 1 MΩ minimum for Class I equipment. Never 'fix' a leakage fault by desensitising the protection.", "insulation_testing"),
+            q("e1q6", "single", "Why is 'the RCD is off' not safe isolation?",
+              ["It only disconnects line", "Anyone can reset it while you work", "RCDs never fully disconnect", "It is safe isolation"], [1], [],
+              "Isolation must be secured: lock off the circuit's device with your own padlock and prove dead.", "safe_isolation"),
+        ],
+    }]
+
+
+def write_course(dirname, course, modules, sims):
+    out = os.path.join(OUT, dirname)
+    os.makedirs(os.path.join(out, "sims"), exist_ok=True)
+    os.makedirs(os.path.join(out, "modules"), exist_ok=True)
+    for sim in sims:
+        with open(os.path.join(out, "sims", sim["id"] + ".json"), "w") as f:
             json.dump(sim, f, indent=1, ensure_ascii=False)
-    for m in modules():
-        with open(os.path.join(OUT, "modules", m["id"] + ".json"), "w") as f:
+    for m in modules:
+        with open(os.path.join(out, "modules", m["id"] + ".json"), "w") as f:
             json.dump(m, f, indent=1, ensure_ascii=False)
-    with open(os.path.join(OUT, "course.json"), "w") as f:
-        json.dump(course(), f, indent=1, ensure_ascii=False)
-    print("demo written to", os.path.normpath(OUT))
+    with open(os.path.join(out, "course.json"), "w") as f:
+        json.dump(course, f, indent=1, ensure_ascii=False)
+
+
+def main():
+    write_course("incident-response", course(), modules(), [infected_sim(), grafana_sim()])
+    write_course("electrical", electrical_course(), electrical_modules(), [electrical_sim()])
+    print("demos written to", os.path.normpath(OUT))
 
 
 if __name__ == "__main__":

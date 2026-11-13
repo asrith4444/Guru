@@ -23,7 +23,28 @@ without feedback. Guru removes those:
   end. Simulations check it, and mastery per skill is computed from your answers and
   actions, not from time spent.
 - **Zero setup.** Practice happens in simulations inside the app, so no time goes on
-  installing, configuring or paying for tools.
+  installing, configuring or paying for tools, and trades are practised without live
+  equipment.
+
+## Goal first, planned like a profession plans it
+
+Guru starts from what you want to *be able to do*, in any field. Before planning it asks
+what a senior practitioner would ask: your experience, the purpose (job, licence, own
+project), the country (codes and licensing differ), the specialisation and your tools. The
+roadmap then follows the profession's own frameworks:
+
+- **The destination,** described as the profession describes it (tasks, quality bar,
+  tools), not "learn the basics".
+- **Named standards and codes,** for example BS 7671 or the NEC for electrical work,
+  IPC/UPC for plumbing, or IEEE 1800 and sign-off flows for chip design, with the
+  jurisdiction stated.
+- **Stages with measurable outcomes and an assessment,** like an apprenticeship's units
+  of competence (whole-task sequencing: van Merriënboer & Kirschner).
+- **Safety as a first-class topic** wherever work can hurt people: safe isolation,
+  lock-out, depressurising, PPE. Simulations refuse unsafe actions and explain the
+  real-world consequence, so the safe order of work is practised, not just read.
+- **Honest limits.** Licences, exams and supervised hours that no course can replace are
+  listed explicitly, so the roadmap is a professional path rather than a promise.
 
 ## A module: Lesson → Quiz → Simulation
 
@@ -52,6 +73,19 @@ account, a licence, a cluster or a machine they don't have. A simulation recreat
   practitioners actually hit.
 - **Always playable.** A validator rejects simulations whose objectives can't be
   completed, and Codex fixes them before the course is marked ready.
+
+## Worth the time, with no dead ends
+
+- **Quality gates at download time.** A lesson must reach a minimum length for its module,
+  follow the full structure, and come with enough gradable questions (each with an
+  explanation) and flashcards. A simulation must have several objectives, at least one
+  that requires *acting*, realistic volumes of logs and files, three graduated hints and
+  a substantive debrief. Anything short of that is sent back to be improved.
+- **Always finishable.** Hints come first. After the hints, or after two wrong answers,
+  *Show me how* reveals that objective's answer and method. It earns no credit, and
+  mastery reflects only what you did yourself, but you are never stuck. Struggle first,
+  then worked example: the order recommended by research on productive failure and
+  worked examples (Kapur, 2008; Sweller & Cooper, 1985).
 
 ## Spacing across days
 

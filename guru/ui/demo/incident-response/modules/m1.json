@@ -1,0 +1,128 @@
+{
+ "id": "m1",
+ "title": "Triage a compromised Linux server",
+ "lesson": "## Why this matters\nWhen a server misbehaves at 3 a.m., the first ten minutes decide whether you fix it or make it worse. A repeatable triage routine beats intuition.\n\n## The mental model\nThink in three questions, always in this order:\n\n```\nSYMPTOM  ──►  CAUSE (what process / change?)  ──►  ENTRY (how did it get here?)\n   top, metrics        ps, /proc, ss, lsof               logs, history, cron, units\n```\n\nContain only after you know the cause *and* the persistence, or it comes back.\n\n## Worked example\nAlert: *CPU 97% on web-01*.\n\n1. `top` (or `ps aux --sort=-%cpu | head`) shows PID 4242 `kworkerds` at 390% CPU.\n   > Pause and predict: real kernel threads appear as `[kworker/...]` in brackets. What does a *non-bracketed* kworker imply?\n2. `ls -l /proc/4242/exe` → `/tmp/.x/kworkerds`. Binaries do not belong in hidden folders under /tmp.\n3. `ss -tnp` shows it connected to `192.0.2.77:3333`, a typical mining-pool port.\n4. Entry point: `grep Accepted /var/log/auth.log` shows a password login for `deploy` from an IP that was brute-forcing seconds earlier.\n5. Persistence: `ls /etc/cron.d/` reveals `sysupdate`, which relaunches the binary every 5 minutes.\n6. Contain: capture evidence, then `kill 4242`, `rm /etc/cron.d/sysupdate`, `rm -rf /tmp/.x`, block the IP.\n\n## The 20% you will use constantly\n| Question | Command |\n|---|---|\n| What is hot? | `top`, `ps aux --sort=-%cpu` |\n| What is it really? | `ls -l /proc/PID/exe`, `lsof -p PID` |\n| Who is it talking to? | `ss -tnp` / `netstat -tnp` |\n| How did they get in? | `grep -E 'Accepted|Failed' /var/log/auth.log`, `last` |\n| How does it come back? | `/etc/cron.d/`, `crontab -l`, `systemctl list-unit-files` |\n\n## How it breaks\n- **Killed the miner, it is back 5 minutes later.** Cause: cron persistence left in place. Fix: remove the cron entry *and* the payload. (See serverfault: \"Unknown process using 100% CPU keeps coming back\".)\n- **`crontab -l` shows nothing, so I assumed no cron.** Cause: system-wide jobs live in `/etc/cron.d/` and `/etc/crontab`, not the user crontab.\n- **Rebooted to \"fix\" it.** Cause: you destroyed in-memory evidence and the persistence survives reboots anyway.\n\n## Evidence before eradication\nEvery command you run changes the machine a little, and an attacker's process can delete itself when it notices you. A professional captures the minimum evidence *before* killing anything, in under two minutes:\n\n```\nls -l /proc/4242/exe        # the real binary, even if renamed or deleted\ncat /proc/4242/cmdline | tr '\u0000' ' '   # full command line (pool, wallet)\nls -l /proc/4242/cwd        # where it was started from\nss -tnp | grep 4242         # who it talks to\ncp /tmp/.x/kworkerds /root/evidence/   # keep a copy (hash it with sha256sum)\n```\n\nWrite down timestamps as you go: the incident report and any later forensics depend on them. In a regulated company, a suspected compromise usually triggers a formal incident process (security team, legal, sometimes regulators), so escalate early rather than quietly \"fixing\" it.\n\n## Scoping: is it just this host?\nThe same credentials or the same weakness often exist elsewhere. Check the sibling servers for the same cron entry, the same login from the same IP, and the same outbound connection. In this scenario `web-02` shares the `deploy` user, so its `auth.log` deserves a look too. Rotate any credential the attacker may have seen, not only the one they used.\n\n## Don't confuse it with\nA **legit kernel worker** (`[kworker/3:2]`) has no executable on disk and runs as a kernel thread. A **disguised process** has a real path in `/proc/PID/exe`.\n\n## Cheat sheet\n- Triage: `top` → `/proc/PID/exe` → `ss -tnp` → logs\n- Contain: evidence → kill → remove persistence + payload → block → rotate credentials\n- After a root compromise: rebuild from a clean image\n",
+ "key_points": [
+  "Triage order: symptom → process → entry point → persistence",
+  "/proc/PID/exe reveals the real binary behind any process name",
+  "System cron jobs live in /etc/cron.d and /etc/crontab",
+  "Contain only after you know the persistence, and capture evidence first",
+  "After a root compromise, rebuild the host"
+ ],
+ "cards": [
+  {
+   "skill_id": "triage",
+   "front": "Which file shows the real executable of PID 4242?",
+   "back": "/proc/4242/exe (ls -l /proc/4242/exe)"
+  },
+  {
+   "skill_id": "triage",
+   "front": "Command to list TCP connections with owning processes?",
+   "back": "ss -tnp (or netstat -tnp)"
+  },
+  {
+   "skill_id": "log_analysis",
+   "front": "Where does Ubuntu log SSH logins?",
+   "back": "/var/log/auth.log"
+  },
+  {
+   "skill_id": "log_analysis",
+   "front": "How do you spot a brute force in auth.log?",
+   "back": "Many 'Failed password' lines from one IP, often for many usernames"
+  },
+  {
+   "skill_id": "containment",
+   "front": "Why remove persistence before celebrating a kill?",
+   "back": "Cron/systemd will relaunch the payload within minutes"
+  },
+  {
+   "skill_id": "containment",
+   "front": "Where do system-wide cron jobs live besides crontab -l?",
+   "back": "/etc/cron.d/ and /etc/crontab"
+  }
+ ],
+ "quiz": [
+  {
+   "id": "m1q1",
+   "kind": "single",
+   "prompt": "A process named `kworkerds` uses 390% CPU and runs from /tmp/.x. What is it most likely?",
+   "options": [
+    "A kernel worker thread",
+    "Malware disguised as a kernel worker",
+    "A stuck log rotation",
+    "Normal under load"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "Kernel threads show in [brackets] and have no executable on disk.",
+   "skill_id": "triage"
+  },
+  {
+   "id": "m1q2",
+   "kind": "text",
+   "prompt": "Which file would you `ls -l` to see the executable behind PID 777?",
+   "options": [],
+   "correct": [],
+   "accept": [
+    "/proc/777/exe"
+   ],
+   "explanation": "/proc/<pid>/exe is a symlink to the real binary, even if it was renamed or deleted.",
+   "skill_id": "triage"
+  },
+  {
+   "id": "m1q3",
+   "kind": "multi",
+   "prompt": "Which of these are persistence mechanisms to check? (select all)",
+   "options": [
+    "/etc/cron.d/",
+    "systemd unit files",
+    "/var/log/auth.log",
+    "~/.bashrc"
+   ],
+   "correct": [
+    0,
+    1,
+    3
+   ],
+   "accept": [],
+   "explanation": "auth.log is evidence, not persistence; the rest can relaunch code.",
+   "skill_id": "containment"
+  },
+  {
+   "id": "m1q4",
+   "kind": "single",
+   "prompt": "You killed the miner and it came back 5 minutes later. Why?",
+   "options": [
+    "The kernel restarts killed processes",
+    "A cron job relaunches it",
+    "kill only pauses processes",
+    "The load balancer restarted it"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "A */5 cron entry relaunches it. Remove it and the payload.",
+   "skill_id": "containment"
+  },
+  {
+   "id": "m1q5",
+   "kind": "single",
+   "prompt": "What should happen to a host after a confirmed root compromise?",
+   "options": [
+    "Reboot it",
+    "Delete the malware and move on",
+    "Rebuild it from a clean image",
+    "Change its hostname"
+   ],
+   "correct": [
+    2
+   ],
+   "accept": [],
+   "explanation": "With root, the attacker could have hidden anything; only a rebuild restores trust.",
+   "skill_id": "containment"
+  }
+ ]
+}

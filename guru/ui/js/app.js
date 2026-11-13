@@ -79,53 +79,171 @@ function statusLine(card) {
 
 // ------------------------------------------------------------ library ----
 
-async function library() {
-  loading();
-  const cards = await call('list_courses');
-  const header = h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Your courses'), h('p', { class: 'muted' }, 'Downloaded courses play offline. Lessons, quizzes, flashcards and simulations need no AI.')), h('button', { class: 'btn primary', onclick: () => go('#/new') }, '+ New course'));
-  if (!cards.length) {
-    page(
-      h(
-        'div',
-        { class: 'hero' },
-        h('h1', null, 'Learn anything in hours, not weeks.'),
-        h('p', { class: 'lead' }, 'Tell Guru what you want to learn and how far you want to go. It builds a complete course, with reading-first lessons, quizzes, flashcards and realistic simulations of the real tools, then you study it like a downloaded course. No videos. No installs. No accounts on tools you don’t have.'),
-        h('div', { class: 'row' }, h('button', { class: 'btn primary big', onclick: () => go('#/new') }, 'Create a course'), h('button', { class: 'btn big', onclick: openDemo }, 'Try the demo course (no AI needed)')),
-        h('div', { class: 'hero-points' }, [
-          ['Simulations instead of installs', 'Practise Grafana, Kubernetes, a hacked server or a conversation in Spanish inside Guru.'],
-          ['Download once, study offline', 'AI is used to build the course. Studying needs none.'],
-          ['Built on learning science', 'Retrieval, spacing, worked examples, real-world failures.'],
-        ].map(([t, d]) => h('div', null, h('b', null, t), h('p', null, d))))
-      )
-    );
-    return;
-  }
-  page(
-    header,
-    h(
-      'div',
-      { class: 'course-grid' },
-      cards.map((card) => {
-        const c = card.course;
-        return h(
-          'article',
-          { class: 'course-card', onclick: () => go(`#/course/${c.slug}`), tabindex: 0, onkeydown: (e) => e.key === 'Enter' && go(`#/course/${c.slug}`) },
-          h('div', { class: 'row spread' }, h('span', { class: 'chip' }, c.level_label || 'Course'), h('span', { class: 'muted small' }, fmtHours(c.hours || 0))),
-          h('h2', null, c.title),
-          h('p', { class: 'muted clamp' }, c.summary || c.goal || c.topic),
-          statusLine(card),
-          h('div', { class: 'mastery-line' }, h('span', { class: 'small' }, `Mastery ${pct(card.mastery)}`), bar(card.mastery)),
-          h('div', { class: 'card-foot small muted' }, h('span', null, `${card.lessons_read}/${c.modules.length} lessons · ${card.sims_ready}/${card.sims_total} simulations`), card.due_cards ? h('span', { class: 'due' }, `${card.due_cards} cards due`) : null)
-        );
-      })
-    ),
-    cards.some((x) => x.course.slug === 'demo-incident-response') ? null : h('p', { class: 'muted small' }, h('a', { href: '#', onclick: (e) => (e.preventDefault(), openDemo()) }, 'Add the demo course'))
+const GOAL_EXAMPLES = [
+  'Become a DevOps engineer who can run production on Kubernetes',
+  'Work as an electrician’s mate on UK homes',
+  'Fix the plumbing in my own house',
+  'Design my first RISC-V chip on an FPGA',
+  'Hold a 20-minute conversation in Spanish',
+  'Pass the AWS Solutions Architect Associate exam',
+];
+
+function goalBox() {
+  const input = h('textarea', { class: 'input goal-input', rows: 2, placeholder: 'e.g. “Become a plumber who can install and fault-find domestic heating systems”', 'aria-label': 'Your goal' });
+  const btn = h('button', { class: 'btn primary big', onclick: () => start() }, 'Plan my path →');
+  const start = () => {
+    const g = input.value.trim();
+    if (g.length < 3) return input.focus();
+    sessionStorage.setItem('guru-goal', g);
+    go('#/goal-new');
+  };
+  input.addEventListener('keydown', (e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), start()));
+  return h(
+    'section',
+    { class: 'goal-box' },
+    h('h1', null, 'What’s your goal?'),
+    h('p', { class: 'lead' }, 'Anything: a trade, a profession, a tool, a language, an exam. Guru asks a few sharp questions, then builds a professional roadmap. Each stage downloads as a course you practise in realistic simulations.'),
+    input,
+    h('div', { class: 'chips' }, GOAL_EXAMPLES.map((g) => h('button', { class: 'chip big', onclick: () => ((input.value = g), input.focus()) }, g))),
+    h('div', { class: 'row' }, btn, h('span', { class: 'muted small' }, 'Just one topic? ', h('a', { href: '#/new' }, 'Quick course'), ' · Try a demo: ', h('a', { href: '#', onclick: (e) => (e.preventDefault(), openDemo('incident-response')) }, 'incident response'), ' · ', h('a', { href: '#', onclick: (e) => (e.preventDefault(), openDemo('electrical')) }, 'electrical fault-finding')))
   );
 }
 
-async function openDemo() {
-  const slug = await call('install_demo');
+function courseCard(card) {
+  const c = card.course;
+  return h(
+    'article',
+    { class: 'course-card', onclick: () => go(`#/course/${c.slug}`), tabindex: 0, onkeydown: (e) => e.key === 'Enter' && go(`#/course/${c.slug}`) },
+    h('div', { class: 'row spread' }, h('span', { class: 'chip' }, c.level_label || 'Course'), h('span', { class: 'muted small' }, fmtHours(c.hours || 0))),
+    h('h2', null, c.title),
+    h('p', { class: 'muted clamp' }, c.summary || c.goal || c.topic),
+    statusLine(card),
+    h('div', { class: 'mastery-line' }, h('span', { class: 'small' }, `Mastery ${pct(card.mastery)}`), bar(card.mastery)),
+    h('div', { class: 'card-foot small muted' }, h('span', null, `${card.lessons_read}/${c.modules.length} lessons · ${card.sims_ready}/${card.sims_total} simulations`), card.due_cards ? h('span', { class: 'due' }, `${card.due_cards} cards due`) : null)
+  );
+}
+
+async function library() {
+  loading();
+  const [cards, goals] = await Promise.all([call('list_courses'), call('list_goals')]);
+  const goalCards = goals.map((g) => {
+    const started = g.stages.filter((s) => s.course_slug).length;
+    const hours = g.stages.reduce((a, s) => a + s.hours, 0);
+    return h(
+      'article',
+      { class: 'course-card goal-card', onclick: () => go(`#/goal/${g.slug}`), tabindex: 0, onkeydown: (e) => e.key === 'Enter' && go(`#/goal/${g.slug}`) },
+      h('div', { class: 'row spread' }, h('span', { class: 'chip goal' }, 'Roadmap'), h('span', { class: 'muted small' }, `${g.stages.length} stages · ${fmtHours(hours)}`)),
+      h('h2', null, g.title),
+      h('p', { class: 'muted clamp' }, g.destination),
+      h('div', { class: 'stage-dots' }, g.stages.map((s) => h('span', { class: s.course_slug ? 'on' : '', title: s.title }))),
+      h('p', { class: 'small muted' }, `${started}/${g.stages.length} stages downloaded`)
+    );
+  });
+  page(
+    goalBox(),
+    goals.length ? h('section', null, h('h2', { class: 'section-title' }, 'Your roadmaps'), h('div', { class: 'course-grid' }, goalCards)) : null,
+    cards.length ? h('section', null, h('h2', { class: 'section-title' }, 'Your courses'), h('p', { class: 'muted small' }, 'Downloaded courses play offline: lessons, quizzes, flashcards and simulations need no AI.'), h('div', { class: 'course-grid' }, cards.map(courseCard))) : null,
+    !cards.length && !goals.length
+      ? h('div', { class: 'hero-points' }, [
+          ['Simulations instead of installs', 'Practise on a hacked server, Grafana, kubectl, a consumer unit or a conversation in Spanish, inside Guru.'],
+          ['Download once, study offline', 'AI builds the course once. Studying needs none.'],
+          ['Taught like a professional', 'Real standards, real instruments, real failure modes, and safety enforced where the work is dangerous.'],
+        ].map(([t, d]) => h('div', null, h('b', null, t), h('p', null, d))))
+      : null
+  );
+}
+
+async function openDemo(name = 'incident-response') {
+  const slug = await call('install_demo', { name });
   go(`#/course/${slug}`);
+}
+
+// ------------------------------------------------------------- goals ----
+
+async function goalQuestions() {
+  const goal = sessionStorage.getItem('guru-goal');
+  if (!goal) return go('#/');
+  loading('Guru is thinking about what it needs to know…');
+  let c;
+  try {
+    c = await call('clarify_goal', { goal });
+  } catch (e) {
+    page(h('div', { class: 'wizard' }, h('h1', null, 'What’s your goal?'), h('div', { class: 'notice warn' }, String(e)), h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => go('#/settings') }, 'Open Settings'), h('button', { class: 'btn ghost', onclick: () => go('#/') }, 'Back'))));
+    return;
+  }
+  const answers = {};
+  const qEls = c.questions.map((q) => {
+    const other = h('input', { class: 'input', placeholder: 'Or type your own answer', oninput: (e) => { answers[q.id] = e.target.value; chips.querySelectorAll('.chip').forEach((x) => x.classList.remove('on')); } });
+    const chips = h('div', { class: 'chips' }, (q.options || []).map((o) => h('button', { class: 'chip big', onclick: (e) => { answers[q.id] = o; other.value = ''; chips.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === e.target)); } }, o)));
+    return h('div', { class: 'question-card' }, h('h3', null, q.question), q.why ? h('p', { class: 'muted small' }, q.why) : null, chips, other);
+  });
+  const btn = h('button', { class: 'btn primary big', onclick: () => build() }, 'Build my roadmap →');
+  const build = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Designing your roadmap… (about a minute)';
+    try {
+      const plan = await call('plan_goal', { goal, answers: c.questions.map((q) => ({ question: q.question, answer: answers[q.id] || '' })) });
+      sessionStorage.removeItem('guru-goal');
+      go(`#/goal/${plan.slug}`);
+    } catch (e) {
+      toast(String(e), 'bad');
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+    }
+  };
+  page(h('div', { class: 'wizard' }, h('p', { class: 'step' }, h('a', { href: '#/' }, '← Change goal'), ' · A few questions'), h('h1', null, c.restated_goal || goal), c.field ? h('p', null, h('span', { class: 'chip goal' }, c.field)) : null, h('p', { class: 'muted' }, 'Answer what you can; skip what you can’t. These decide where your roadmap starts and which standards it follows.'), qEls, h('div', { class: 'row' }, btn)));
+}
+
+async function goalPage(slug) {
+  loading();
+  const data = await call('get_goal', { slug });
+  const g = data.plan;
+  const total = g.stages.reduce((a, s) => a + s.hours, 0);
+  const firstPending = data.stages.find((x) => !x.card);
+  const stageCard = ({ stage: st, card }, i) => {
+    const download = async () => {
+      try {
+        const cs = await call('download_stage', { goalSlug: slug, stageId: st.id });
+        go(`#/course/${cs}`);
+      } catch (e) {
+        toast(String(e), 'bad');
+      }
+    };
+    return h(
+      'article',
+      { class: `stage ${card ? 'started' : ''}` },
+      h('div', { class: 'stage-num' }, String(i + 1)),
+      h(
+        'div',
+        { class: 'stage-body' },
+        h('div', { class: 'row spread' }, h('h3', null, st.title), h('span', { class: 'muted small' }, `${levelLabel(st.level)} · ${fmtHours(st.hours)}`)),
+        st.why ? h('p', { class: 'muted' }, st.why) : null,
+        h('div', { class: 'stage-cols' },
+          h('div', null, h('b', { class: 'small' }, 'You will be able to'), h('ul', null, st.outcomes.map((o) => h('li', null, o)))),
+          st.practice?.length ? h('div', null, h('b', { class: 'small' }, 'Hands-on simulations'), h('ul', null, st.practice.map((o) => h('li', null, o)))) : null
+        ),
+        st.assessment ? h('p', { class: 'small' }, h('b', null, 'Assessed by: '), st.assessment) : null,
+        card
+          ? h('div', { class: 'row' }, statusLine(card), h('button', { class: 'btn small', onclick: () => go(`#/course/${card.course.slug}`) }, 'Open course →'), h('span', { class: 'small muted' }, `Mastery ${pct(card.mastery)}`))
+          : h('div', { class: 'row' }, h('button', { class: `btn ${firstPending?.stage.id === st.id ? 'primary' : ''}`, onclick: download }, '⬇ Download this stage'), h('span', { class: 'muted small' }, 'AI builds it once; then it works offline.'))
+      )
+    );
+  };
+  page(
+    h('a', { class: 'back', href: '#/' }, '← Home'),
+    h('div', { class: 'goal-head' }, h('span', { class: 'chip goal' }, g.field), h('h1', null, g.title), h('p', { class: 'lead' }, h('b', null, 'Where you’ll be: '), g.destination), h('p', { class: 'muted small' }, `Your goal: “${g.goal}” · ${g.stages.length} stages · ${fmtHours(total)} of focused study`)),
+    h(
+      'div',
+      { class: 'goal-facts' },
+      g.standards?.length ? h('div', null, h('b', null, 'Standards followed'), h('div', { class: 'chips' }, g.standards.map((x) => h('span', { class: 'chip' }, x)))) : null,
+      g.tools?.length ? h('div', null, h('b', null, 'Tools of the trade (simulated)'), h('div', { class: 'chips' }, g.tools.map((x) => h('span', { class: 'chip' }, x)))) : null
+    ),
+    g.safety?.length ? h('div', { class: 'callout safety' }, h('b', null, '⚠ Safety in this field'), h('ul', null, g.safety.map((x) => h('li', null, x)))) : null,
+    h('h2', null, 'Your roadmap'),
+    h('div', { class: 'stages' }, data.stages.map(stageCard)),
+    g.beyond_guru?.length ? h('div', { class: 'callout real-world' }, h('b', null, 'What still needs the real world'), h('p', { class: 'small muted' }, 'Guru gets you competent fast. These steps you complete outside the app:'), h('ul', null, g.beyond_guru.map((x) => h('li', null, x)))) : null,
+    h('div', { class: 'row danger-zone' }, h('button', { class: 'btn ghost small', onclick: () => modal('Delete this roadmap?', h('p', null, 'Downloaded stage courses are kept.'), [{ label: 'Cancel' }, { label: 'Delete', primary: true, onClick: () => { call('delete_goal', { slug }).then(() => go('#/')); } }]) }, 'Delete roadmap'))
+  );
 }
 
 // ---------------------------------------------------------- new course ----
@@ -277,7 +395,7 @@ async function coursePage(slug) {
               m.sims.map((s) => {
                 const r = get(p.sims, s.id);
                 const ok = data.ready_sims.includes(s.id);
-                return h('button', { class: `step-btn sim ${r?.completed ? 'done' : ''}`, disabled: !ok, onclick: () => go(`#/course/${slug}/sim/${s.id}`), title: s.premise }, r?.completed ? '✓ ' : '▶ ', s.title, ok ? '' : ' (building…)');
+                return h('button', { class: `step-btn sim ${r?.completed ? 'done' : ''}`, disabled: !ok, onclick: () => go(`#/course/${slug}/sim/${s.id}`), title: s.kind ? `${s.kind} simulation · ${s.tool}` : null }, r?.completed ? '✓ ' : '▶ ', s.title, ok ? '' : ' (building…)');
               })
             )
           : h('p', { class: 'small muted' }, h('span', { class: 'spinner small' }), ' Being built…')
@@ -287,7 +405,7 @@ async function coursePage(slug) {
 
   const cap = c.capstone;
   page(
-    h('a', { class: 'back', href: '#/' }, '← All courses'),
+    c.goal_slug ? h('a', { class: 'back', href: `#/goal/${c.goal_slug}` }, '← Roadmap') : h('a', { class: 'back', href: '#/' }, '← Home'),
     h(
       'div',
       { class: 'course-head' },
@@ -316,7 +434,7 @@ async function coursePage(slug) {
           'article',
           { class: 'module capstone' },
           h('div', { class: 'module-num' }, '★'),
-          h('div', { class: 'module-body' }, h('h3', null, `Capstone · ${cap.title}`), h('p', { class: 'muted' }, cap.premise), data.ready_sims.includes(cap.id) ? h('button', { class: `step-btn sim ${get(p.sims, cap.id)?.completed ? 'done' : ''}`, onclick: () => go(`#/course/${slug}/sim/${cap.id}`) }, get(p.sims, cap.id)?.completed ? '✓ Completed' : '▶ Start capstone') : h('p', { class: 'small muted' }, 'Being built…'))
+          h('div', { class: 'module-body' }, h('h3', null, `Capstone · ${cap.title}`), h('p', { class: 'muted' }, 'One realistic scenario that brings the whole course together.'), data.ready_sims.includes(cap.id) ? h('button', { class: `step-btn sim ${get(p.sims, cap.id)?.completed ? 'done' : ''}`, onclick: () => go(`#/course/${slug}/sim/${cap.id}`) }, get(p.sims, cap.id)?.completed ? '✓ Completed' : '▶ Start capstone') : h('p', { class: 'small muted' }, 'Being built…'))
         )
       : null,
     c.skills.length
@@ -609,6 +727,8 @@ async function settingsPage() {
 const routes = [
   [/^#?\/?$/, () => library()],
   [/^#\/new$/, () => newCourse()],
+  [/^#\/goal-new$/, () => goalQuestions()],
+  [/^#\/goal\/([\w-]+)$/, (m) => goalPage(m[1])],
   [/^#\/settings$/, () => settingsPage()],
   [/^#\/course\/([\w-]+)$/, (m) => coursePage(m[1])],
   [/^#\/course\/([\w-]+)\/lesson\/([\w-]+)$/, (m) => lessonPage(m[1], m[2])],
@@ -620,7 +740,7 @@ const routes = [
 async function route() {
   document.body.classList.remove('immersive');
   const hash = location.hash || '#/';
-  for (const a of document.querySelectorAll('.nav a')) a.classList.toggle('active', a.getAttribute('href') === hash || (a.getAttribute('href') === '#/' && hash.startsWith('#/course')));
+  for (const a of document.querySelectorAll('.nav a')) a.classList.toggle('active', a.getAttribute('href') === hash || (a.getAttribute('href') === '#/' && /^#\/(course|goal)/.test(hash)));
   for (const [rx, fn] of routes) {
     const m = hash.match(rx);
     if (m) {
@@ -651,7 +771,7 @@ listen('download', (ev) => {
   const hash = location.hash || '#/';
   if (ev.phase === 'ready') toast(`${ev.message}`, 'ok');
   if (ev.phase === 'failed') toast(`Download stopped: ${ev.message.slice(0, 160)}`, 'bad');
-  const relevant = hash === '#/' || hash === '' || hash === `#/course/${ev.slug}`;
+  const relevant = hash === '#/' || hash === '' || hash === `#/course/${ev.slug}` || hash.startsWith('#/goal/');
   if (!relevant) return;
   clearTimeout(rerender);
   rerender = setTimeout(route, ev.phase === 'building' && ev.activity ? 1200 : 150);

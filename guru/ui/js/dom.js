@@ -54,12 +54,15 @@ export function toast(message, kind = 'info') {
     document.body.append(toastHost);
   }
   const t = h('div', { class: `toast ${kind}` }, message);
+  while (toastHost.children.length >= 3) toastHost.firstChild.remove();
   toastHost.append(t);
   setTimeout(() => t.classList.add('out'), 3600);
   setTimeout(() => t.remove(), 4000);
 }
 
 export function modal(title, body, actions = []) {
+  // A dialog needs full attention: never cover its buttons with notifications.
+  toastHost?.replaceChildren();
   const close = () => back.remove();
   const back = h(
     'div',

@@ -51,6 +51,9 @@ pub struct ExecRequest<'a> {
 #[derive(Clone, Debug)]
 pub struct Codex {
     pub bin: PathBuf,
+    /// Hard limit for one request; a hung request is killed and reported as a
+    /// timeout so the caller can retry instead of waiting forever.
+    pub timeout: std::time::Duration,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub web_search: bool,
@@ -65,8 +68,13 @@ impl Codex {
             .map(PathBuf::from)
             .or_else(|| cfg.codex_bin.clone().map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("codex"));
+        let timeout_secs = std::env::var("GURU_CODEX_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(20 * 60);
         Self {
             bin,
+            timeout: std::time::Duration::from_secs(timeout_secs.max(1)),
             model: cfg.model.clone(),
             reasoning_effort: cfg.reasoning_effort.clone(),
             web_search: cfg.web_search,
@@ -170,28 +178,67 @@ impl Codex {
             buf
         });
 
+        // Read events on a separate thread so a hung process (or a grandchild
+        // holding stdout open) can never block us past the deadline.
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        let deadline = std::time::Instant::now() + self.timeout;
         let mut errors = Vec::new();
         let mut last_agent_message = None;
-        if let Some(stdout) = child.stdout.take() {
-            for line in BufReader::new(stdout).lines() {
-                let Ok(line) = line else { break };
-                let Ok(event) = serde_json::from_str::<Value>(&line) else {
-                    continue;
-                };
-                match interpret_event(&event) {
-                    Some(EventInfo::Message(m)) => last_agent_message = Some(m),
-                    Some(EventInfo::Activity(a)) => {
-                        if let Some(cb) = activity {
-                            cb(&a);
-                        }
-                    }
-                    Some(EventInfo::Error(e)) => errors.push(e),
-                    None => {}
-                }
+        let mut timed_out = false;
+        loop {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                timed_out = true;
+                break;
             }
+            match rx.recv_timeout(deadline - now) {
+                Ok(line) => {
+                    let Ok(event) = serde_json::from_str::<Value>(&line) else {
+                        continue;
+                    };
+                    match interpret_event(&event) {
+                        Some(EventInfo::Message(m)) => last_agent_message = Some(m),
+                        Some(EventInfo::Activity(a)) => {
+                            if let Some(cb) = activity {
+                                cb(&a);
+                            }
+                        }
+                        Some(EventInfo::Error(e)) => errors.push(e),
+                        None => {}
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    timed_out = true;
+                    break;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        if timed_out {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!(
+                "Codex step '{}' timed out after {} min",
+                req.label,
+                self.timeout.as_secs().div_ceil(60)
+            );
         }
         let status = child.wait()?;
         let stderr_text = stderr_reader.join().unwrap_or_default();
+        if !status.success() && !errors.is_empty() {
+            // Surface Codex's own error (auth, usage limits, network) verbatim so
+            // the caller can decide whether to retry, wait or stop.
+            bail!("Codex step '{}' failed: {}", req.label, errors.join(" "));
+        }
 
         let text = std::fs::read_to_string(&out_file)
             .ok()

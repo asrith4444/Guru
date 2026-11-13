@@ -1,5 +1,7 @@
-//! End-to-end: size a topic, create a course, run the full download pipeline
-//! against a fake Codex, then check the offline package is complete and valid.
+//! End-to-end against a fake Codex (tests/fake_codex.sh):
+//! goal → clarifying questions → roadmap → download a stage, including a
+//! dropped connection, a hung request, a thin lesson and an unplayable
+//! simulation, all of which must be recovered without failing the download.
 
 #![cfg(unix)]
 
@@ -12,6 +14,7 @@ use guru_core::config::Config;
 use guru_core::course::CourseStatus;
 use guru_core::course::Package;
 use guru_core::generator;
+use guru_core::goal;
 use guru_core::sim;
 
 fn setup() -> PathBuf {
@@ -27,12 +30,17 @@ fn setup() -> PathBuf {
     // Single test per binary, so process-wide env is safe here.
     std::env::set_var("GURU_HOME", &home);
     std::env::set_var("GURU_CODEX_BIN", &fake);
-    std::env::set_var("FAKE_DEMO_DIR", manifest.join("../ui/demo"));
+    std::env::set_var(
+        "FAKE_DEMO_DIR",
+        manifest.join("../ui/demo/incident-response"),
+    );
+    std::env::set_var("GURU_RETRY_DELAY_MS", "0");
+    std::env::set_var("GURU_CODEX_TIMEOUT_SECS", "3");
     home
 }
 
 #[test]
-fn scope_create_download_resume() {
+fn goal_to_stage_download_survives_failures() {
     let home = setup();
     let cfg = Config {
         parallel_jobs: Some(2),
@@ -40,20 +48,28 @@ fn scope_create_download_resume() {
         ..Config::default()
     };
     let codex = Codex::from_config(&cfg);
+    generator::preflight(&codex).expect("fake codex is installed and signed in");
 
-    let scope = generator::scope(&codex, "Widgets", "ship widgets").unwrap();
-    assert_eq!(scope.intermediate.hours, 2.5);
-    let hours = scope.hours_for(66);
+    // Goal → questions → roadmap.
+    let c = goal::clarify(&codex, "I want to become an electrician").unwrap();
+    assert_eq!(c.questions.len(), 2);
+    assert_eq!(c.questions[0].id, "q1", "ids are normalised");
+    let answers = vec![goal::Answer {
+        question: c.questions[1].question.clone(),
+        answer: "UK (BS 7671)".into(),
+    }];
+    let plan = goal::plan(&codex, "I want to become an electrician", answers).unwrap();
+    assert_eq!(plan.stages.len(), 3);
+    assert_eq!(plan.stages[2].id, "s3");
+    assert_eq!(plan.total_hours(), 9.0);
+    assert_eq!(goal::list().len(), 1);
 
-    let pkg = generator::create(&generator::Request {
-        topic: "Widgets".into(),
-        goal: "ship widgets".into(),
-        level: 66,
-        hours,
-        scope: Some(scope),
-    })
-    .unwrap();
-    assert_eq!(pkg.course().unwrap().status, CourseStatus::Planning);
+    // Download stage 1 as a course.
+    let req = plan.request_for("s1").unwrap();
+    let pkg = generator::create(&req).unwrap();
+    let slug = pkg.course().unwrap().slug;
+    goal::link_course(&plan.slug, "s1", &slug).unwrap();
+    assert_eq!(goal::load(&plan.slug).unwrap().stages[0].course_slug, slug);
 
     let events = Mutex::new(Vec::new());
     let emit = |e: generator::Event| events.lock().unwrap().push(e);
@@ -66,64 +82,91 @@ fn scope_create_download_resume() {
         "{}",
         course.status_detail
     );
-    assert_eq!(course.title, "Widgets Fast");
-    assert_eq!(course.level_label, "Intermediate");
-    assert_eq!(course.capstone.id, "capstone", "capstone id is normalised");
-    assert_eq!(course.modules.len(), 2);
+    assert!(
+        course.goal_context.contains("BS 7671"),
+        "roadmap context is stored"
+    );
+    assert_eq!(course.capstone.id, "capstone");
     for m in &course.modules {
         let module = pkg.module(&m.id).unwrap();
-        assert!(!module.lesson.is_empty());
-        assert_eq!(module.id, m.id);
-        assert!(module.quiz.iter().all(|q| q.id.starts_with(&m.id)));
+        assert!(
+            generator::module_issues(&module, m.minutes).is_empty(),
+            "module {} is worth the time",
+            m.id
+        );
     }
     for s in course.all_sims() {
         let sim = pkg.sim(&s.id).unwrap();
-        assert_eq!(sim.id, s.id);
         assert!(sim::validate(&sim).is_empty(), "{} invalid", s.id);
     }
-    // The flawed first attempt was repaired with the validator's feedback.
+
     let log = std::fs::read_to_string(pkg.dir.join(".guru/fake-prompts.log")).unwrap();
-    assert!(log.contains("FAILED VALIDATION"));
     assert!(
-        log.contains("unknown node 'ghost'"),
+        log.contains("one stage of the learner's roadmap"),
+        "the plan knows its stage"
+    );
+    assert!(
+        log.contains("Professional standard, any field"),
+        "professional rules are in every prompt"
+    );
+    assert!(
+        log.contains("NOT GOOD ENOUGH"),
+        "the thin lesson was sent back"
+    );
+    assert!(
+        log.contains("FAILED VALIDATION") && log.contains("unknown node 'ghost'"),
         "validator errors are fed back"
     );
-    assert!(
-        log.contains("Pace aggressively"),
-        "method is in every prompt"
-    );
-    // Flashcards were collected once (both modules return the same cards).
-    assert_eq!(pkg.deck().cards.len(), 6);
 
     let events = events.into_inner().unwrap();
-    assert!(events.iter().any(|e| e.phase == "planning"));
-    assert!(events.iter().any(|e| e.activity.starts_with("Researching")));
+    let acts: Vec<&str> = events.iter().map(|e| e.activity.as_str()).collect();
+    assert!(
+        acts.iter().any(|a| a.contains("connection problem")),
+        "dropped stream was retried: {acts:?}"
+    );
+    assert!(
+        acts.iter()
+            .any(|a| a.starts_with("Retrying Simulation: First incident")),
+        "hung request was retried: {acts:?}"
+    );
+    assert!(acts.iter().any(|a| a.starts_with("Improving the lesson")));
     let last = events.last().unwrap();
     assert_eq!(
         (last.phase.as_str(), last.done, last.total),
         ("ready", 5, 5)
     );
+    let dl = std::fs::read_to_string(pkg.dir.join(".guru/download.log")).unwrap();
+    assert!(dl.contains("[ready]"), "download log is written");
 
     // Resume after losing a file rebuilds only that file.
-    std::fs::remove_file(pkg.sim_path("m1s1").unwrap()).unwrap();
+    std::fs::remove_file(pkg.sim_path("m2s1").unwrap()).unwrap();
     let before = log.matches("----").count();
-    let events2 = Mutex::new(Vec::new());
-    let emit2 = |e: generator::Event| events2.lock().unwrap().push(e);
-    generator::run(&pkg, &cfg, &AtomicBool::new(false), &emit2).unwrap();
+    generator::run(&pkg, &cfg, &AtomicBool::new(false), &|_| {}).unwrap();
     let after = std::fs::read_to_string(pkg.dir.join(".guru/fake-prompts.log"))
         .unwrap()
         .matches("----")
         .count();
     assert_eq!(
         after - before,
-        1,
-        "only the missing simulation was regenerated"
+        2,
+        "only the missing simulation was rebuilt (one invalid attempt + one fix)"
     );
-    assert!(pkg.sim_path("m1s1").unwrap().exists());
 
-    // Library listing and deletion.
-    assert_eq!(Package::list().len(), 1);
-    Package::open(&course.slug).unwrap().delete().unwrap();
-    assert!(Package::list().is_empty());
+    // A crash mid-download is recovered as resumable.
+    let mut c = pkg.course().unwrap();
+    c.status = CourseStatus::Downloading;
+    pkg.save_course(&c).unwrap();
+    assert_eq!(generator::recover_interrupted(), 1);
+    let c = pkg.course().unwrap();
+    assert_eq!(c.status, CourseStatus::Failed);
+    assert!(c.status_detail.contains("Resume"));
+
+    // A quick course without a roadmap still works (level-bar path).
+    let scope = generator::scope(&codex, "Widgets", "ship widgets").unwrap();
+    assert_eq!(scope.intermediate.hours, 2.5);
+
+    Package::open(&slug).unwrap().delete().unwrap();
+    goal::delete(&plan.slug).unwrap();
+    assert!(Package::list().is_empty() && goal::list().is_empty());
     let _ = std::fs::remove_dir_all(home);
 }

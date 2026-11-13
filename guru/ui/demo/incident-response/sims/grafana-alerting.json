@@ -61,39 +61,224 @@
    "node_id": "api",
    "lines": [
     {
-     "ts": "03:00:01",
+     "ts": "03:00:00",
      "level": "info",
-     "message": "GET /api/cart 200 41ms"
+     "message": "GET /api/cart 200 44ms instance=api-a"
     },
     {
-     "ts": "03:00:03",
+     "ts": "03:00:09",
      "level": "info",
-     "message": "GET /api/products 200 22ms"
+     "message": "GET /api/products 200 19ms instance=api-b"
+    },
+    {
+     "ts": "03:00:18",
+     "level": "info",
+     "message": "POST /api/checkout 200 67ms instance=api-a"
+    },
+    {
+     "ts": "03:00:27",
+     "level": "info",
+     "message": "GET /healthz 200 47ms instance=api-b"
+    },
+    {
+     "ts": "03:00:36",
+     "level": "info",
+     "message": "GET /api/cart 200 43ms instance=api-a"
+    },
+    {
+     "ts": "03:00:45",
+     "level": "info",
+     "message": "GET /api/products 200 32ms instance=api-b"
+    },
+    {
+     "ts": "03:00:54",
+     "level": "info",
+     "message": "POST /api/checkout 200 39ms instance=api-a"
+    },
+    {
+     "ts": "03:01:03",
+     "level": "info",
+     "message": "GET /healthz 200 28ms instance=api-b"
+    },
+    {
+     "ts": "03:01:12",
+     "level": "info",
+     "message": "GET /api/cart 200 28ms instance=api-a"
+    },
+    {
+     "ts": "03:01:21",
+     "level": "info",
+     "message": "GET /api/products 200 19ms instance=api-b"
+    },
+    {
+     "ts": "03:01:30",
+     "level": "info",
+     "message": "POST /api/checkout 200 52ms instance=api-a"
+    },
+    {
+     "ts": "03:01:39",
+     "level": "info",
+     "message": "GET /healthz 200 20ms instance=api-b"
+    },
+    {
+     "ts": "03:01:48",
+     "level": "info",
+     "message": "GET /api/cart 200 24ms instance=api-a"
+    },
+    {
+     "ts": "03:01:57",
+     "level": "info",
+     "message": "GET /api/products 200 62ms instance=api-b"
+    },
+    {
+     "ts": "03:02:06",
+     "level": "info",
+     "message": "POST /api/checkout 200 48ms instance=api-a"
     },
     {
      "ts": "03:02:11",
      "level": "warn",
-     "message": "payment-provider slow response 1800ms"
+     "message": "payment-provider slow response 1800ms (timeout 2000ms)"
+    },
+    {
+     "ts": "03:02:15",
+     "level": "info",
+     "message": "GET /healthz 200 31ms instance=api-b"
+    },
+    {
+     "ts": "03:02:24",
+     "level": "info",
+     "message": "GET /api/cart 200 38ms instance=api-a"
+    },
+    {
+     "ts": "03:02:33",
+     "level": "info",
+     "message": "GET /api/products 200 23ms instance=api-b"
+    },
+    {
+     "ts": "03:02:42",
+     "level": "info",
+     "message": "POST /api/checkout 200 53ms instance=api-a"
+    },
+    {
+     "ts": "03:02:51",
+     "level": "info",
+     "message": "GET /healthz 200 67ms instance=api-b"
+    },
+    {
+     "ts": "03:03:00",
+     "level": "info",
+     "message": "GET /api/cart 200 55ms instance=api-a"
+    },
+    {
+     "ts": "03:03:09",
+     "level": "info",
+     "message": "GET /api/products 200 47ms instance=api-b"
+    },
+    {
+     "ts": "03:03:18",
+     "level": "info",
+     "message": "POST /api/checkout 200 32ms instance=api-a"
+    },
+    {
+     "ts": "03:03:27",
+     "level": "info",
+     "message": "GET /healthz 200 22ms instance=api-b"
+    },
+    {
+     "ts": "03:03:36",
+     "level": "info",
+     "message": "GET /api/cart 200 60ms instance=api-a"
+    },
+    {
+     "ts": "03:03:45",
+     "level": "info",
+     "message": "GET /api/products 200 38ms instance=api-b"
+    },
+    {
+     "ts": "03:03:54",
+     "level": "info",
+     "message": "POST /api/checkout 200 29ms instance=api-a"
+    },
+    {
+     "ts": "03:03:58",
+     "level": "warn",
+     "message": "payment-provider slow response 1950ms (timeout 2000ms)"
+    },
+    {
+     "ts": "03:04:03",
+     "level": "info",
+     "message": "GET /healthz 200 46ms instance=api-b"
+    },
+    {
+     "ts": "03:04:12",
+     "level": "info",
+     "message": "GET /api/cart 200 46ms instance=api-a"
+    },
+    {
+     "ts": "03:04:21",
+     "level": "info",
+     "message": "GET /api/products 200 40ms instance=api-b"
+    },
+    {
+     "ts": "03:04:30",
+     "level": "info",
+     "message": "POST /api/checkout 200 16ms instance=api-a"
+    },
+    {
+     "ts": "03:04:39",
+     "level": "info",
+     "message": "GET /healthz 200 25ms instance=api-b"
     },
     {
      "ts": "03:04:40",
      "level": "error",
-     "message": "POST /api/checkout 503 upstream payment-provider unavailable"
+     "message": "POST /api/checkout 503 upstream payment-provider unavailable instance=api-a"
     },
     {
      "ts": "03:04:41",
      "level": "error",
-     "message": "POST /api/checkout 503 upstream payment-provider unavailable"
+     "message": "POST /api/checkout 503 upstream payment-provider unavailable instance=api-b"
+    },
+    {
+     "ts": "03:04:48",
+     "level": "info",
+     "message": "GET /api/cart 200 15ms instance=api-a"
+    },
+    {
+     "ts": "03:04:52",
+     "level": "warn",
+     "message": "GC pause 310ms (heap 1.6G/2G) instance=api-b"
+    },
+    {
+     "ts": "03:04:57",
+     "level": "info",
+     "message": "GET /api/products 200 46ms instance=api-b"
     },
     {
      "ts": "03:05:02",
      "level": "error",
-     "message": "circuit breaker OPEN for payment-provider"
+     "message": "circuit breaker OPEN for payment-provider (50% failures over 20 calls)"
     },
     {
-     "ts": "03:05:30",
+     "ts": "03:05:06",
      "level": "info",
-     "message": "GET /api/cart 200 39ms"
+     "message": "POST /api/checkout 200 58ms instance=api-a"
+    },
+    {
+     "ts": "03:05:15",
+     "level": "info",
+     "message": "GET /healthz 200 43ms instance=api-b"
+    },
+    {
+     "ts": "03:05:32",
+     "level": "info",
+     "message": "circuit breaker HALF_OPEN for payment-provider"
+    },
+    {
+     "ts": "03:05:33",
+     "level": "error",
+     "message": "POST /api/checkout 503 upstream payment-provider unavailable instance=api-a"
     }
    ]
   }
@@ -166,6 +351,7 @@
           "set_flags": [
            "datasource_ok"
           ],
+          "clear_flags": [],
           "node_status": [],
           "message": "Data source connected."
          }
@@ -181,6 +367,7 @@
          "message": "✖ Post \"http://localhost:9090/api/v1/query\": dial tcp 127.0.0.1:9090: connect: connection refused — localhost here means the Grafana container itself, not Prometheus.",
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -237,6 +424,7 @@
          "series": [],
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -251,6 +439,7 @@
          "series": [],
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -334,6 +523,7 @@
           "set_flags": [
            "query:rate"
           ],
+          "clear_flags": [],
           "node_status": [],
           "message": "Nice: rate() over a counter → requests per second."
          }
@@ -417,6 +607,7 @@
           "set_flags": [
            "query:error_ratio"
           ],
+          "clear_flags": [],
           "node_status": [],
           "message": "That's the error ratio: 5xx rate ÷ total rate. It crosses 5% at 03:04."
          }
@@ -463,71 +654,71 @@
           {
            "name": "api-a /api/cart 200",
            "points": [
-            39.6,
-            43.2,
-            44.7,
-            39.5,
-            37.7,
-            37.1,
-            44.5,
-            37.1,
-            40.8,
-            36.4,
-            40.2,
-            44.5,
-            36.3,
-            43.2,
-            40.1,
-            43.9,
-            42.0,
-            37.3,
-            44.0,
-            39.9,
-            35.2,
-            35.0,
-            39.9,
-            39.5,
-            38.0,
-            36.4,
-            38.4,
+            39.1,
+            42.3,
+            39.2,
+            38.8,
+            36.2,
+            38.3,
             38.2,
-            43.4,
-            35.0
+            38.4,
+            39.0,
+            44.4,
+            37.0,
+            35.1,
+            42.4,
+            37.5,
+            35.6,
+            38.9,
+            43.7,
+            35.8,
+            44.3,
+            42.6,
+            43.5,
+            37.8,
+            35.5,
+            41.6,
+            41.3,
+            36.5,
+            44.7,
+            39.4,
+            38.2,
+            42.7
            ]
           },
           {
            "name": "api-b /api/cart 200",
            "points": [
-            40.5,
-            41.4,
-            34.2,
-            42.3,
-            40.1,
-            42.0,
-            35.9,
-            36.7,
-            36.9,
-            43.0,
-            38.9,
-            36.6,
+            40.9,
             37.3,
-            35.8,
-            33.5,
-            34.0,
-            41.3,
-            35.9,
-            42.4,
-            35.5,
-            35.7,
-            38.1,
-            34.9,
-            36.7,
-            42.6,
+            33.3,
+            40.6,
+            37.0,
             41.8,
-            41.1,
-            39.3,
+            38.5,
+            35.0,
+            33.8,
+            42.3,
+            37.1,
+            39.1,
+            34.4,
+            41.7,
+            37.9,
             42.1,
-            42.4
+            38.5,
+            34.7,
+            37.1,
+            35.8,
+            35.6,
+            40.4,
+            39.5,
+            37.1,
+            35.4,
+            37.8,
+            39.7,
+            34.2,
+            39.4,
+            33.8
            ]
           },
           {
@@ -555,19 +746,20 @@
             0.0,
             0.0,
             0.0,
+            6.0,
+            6.6,
             6.1,
-            6.4,
-            5.1,
+            5.9,
+            5.7,
             6.5,
             5.9,
-            6.5,
-            6.3,
-            5.6
+            6.1
            ]
           }
          ],
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -686,6 +878,7 @@
           "set_flags": [
            "query:cpu"
           ],
+          "clear_flags": [],
           "node_status": [],
           "message": "CPU busy % per instance: api-b is running much hotter."
          }
@@ -718,6 +911,7 @@
           "set_flags": [
            "query:p95"
           ],
+          "clear_flags": [],
           "node_status": [],
           "message": "p95 from a histogram: histogram_quantile over rate() of the _bucket series, summed by le."
          }
@@ -732,6 +926,7 @@
          "series": [],
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -838,6 +1033,7 @@
           "set_flags": [
            "alert_created"
           ],
+          "clear_flags": [],
           "node_status": [
            {
             "node_id": "api",
@@ -858,6 +1054,7 @@
          "message": "✖ Saved, but with a 0s pending period this would page on every brief spike. On-call engineers will hate you. Use 5m.",
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }
@@ -873,6 +1070,7 @@
          "message": "✖ That query is total traffic, not errors. Alert on the 5xx *ratio* (errors ÷ all requests).",
          "effects": {
           "set_flags": [],
+          "clear_flags": [],
           "node_status": [],
           "message": ""
          }

@@ -1,0 +1,92 @@
+{
+ "format": 1,
+ "slug": "demo-electrical-fault-finding",
+ "title": "Electrical fault-finding: tripping RCDs (demo)",
+ "topic": "Domestic electrical fault-finding",
+ "goal": "Find why the power keeps tripping, safely, the way an electrician does",
+ "level": 40,
+ "level_label": "Beginner",
+ "hours": 1.0,
+ "summary": "A built-in sample from the trades: one lesson and one hands-on workbench simulation on a consumer unit, with real instruments, realistic readings and safe isolation enforced.",
+ "target_performance": "Diagnose a tripping RCD to the faulty appliance by test, apply safe isolation before touching anything, and leave the installation safe.",
+ "out_of_scope": [
+  "Fixed-wiring repairs",
+  "Consumer unit replacement",
+  "Certification and Part P notification"
+ ],
+ "skills": [
+  {
+   "id": "safe_isolation",
+   "name": "Safe isolation",
+   "why": "It is what keeps electricians alive",
+   "weight": 10
+  },
+  {
+   "id": "rcd_principles",
+   "name": "RCD vs MCB principles",
+   "why": "Points you at the right cause immediately",
+   "weight": 8
+  },
+  {
+   "id": "fault_finding",
+   "name": "Systematic fault finding",
+   "why": "Minutes instead of hours",
+   "weight": 8
+  },
+  {
+   "id": "insulation_testing",
+   "name": "Insulation resistance testing",
+   "why": "Proves faults instead of guessing",
+   "weight": 7
+  }
+ ],
+ "modules": [
+  {
+   "id": "e1",
+   "title": "Safe isolation and RCD fault-finding",
+   "minutes": 50,
+   "summary": "Read the consumer unit, split the problem, prove the fault by test, and never touch what you have not proved dead.",
+   "objectives": [
+    "Tell an RCD trip from an MCB trip",
+    "Find a leaking appliance by elimination and test",
+    "Carry out safe isolation in the correct order"
+   ],
+   "skill_ids": [
+    "safe_isolation",
+    "rcd_principles",
+    "fault_finding",
+    "insulation_testing"
+   ],
+   "sims": [
+    {
+     "id": "rcd-kitchen",
+     "title": "Kitchen sockets dead: find the fault, safely",
+     "kind": "workbench",
+     "tool": "Consumer unit, two-pole tester, insulation resistance tester",
+     "premise": "Kettle with a water-damaged element trips a 30 mA RCD"
+    }
+   ]
+  }
+ ],
+ "capstone": {
+  "id": "",
+  "title": "",
+  "kind": "",
+  "tool": "",
+  "premise": ""
+ },
+ "research": {
+  "stackexchange_site": "diy",
+  "tags": [
+   "electrical",
+   "gfci"
+  ],
+  "queries": [
+   "rcd keeps tripping"
+  ]
+ },
+ "status": "ready",
+ "status_detail": "",
+ "created_unix": 0,
+ "generator": "hand-written demo"
+}

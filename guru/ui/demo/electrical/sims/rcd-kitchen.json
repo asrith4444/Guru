@@ -1,0 +1,824 @@
+{
+ "id": "rcd-kitchen",
+ "title": "Kitchen sockets dead: find the fault, safely",
+ "kind": "workbench",
+ "tool": "Consumer unit, two-pole tester, insulation resistance tester",
+ "minutes": 25,
+ "skill_ids": [
+  "safe_isolation",
+  "rcd_principles",
+  "fault_finding",
+  "insulation_testing"
+ ],
+ "briefing": "**Call-out, 07:52.** *“Half the kitchen went off when I made breakfast. I reset the switch twice and it keeps going off.”*\n\nYou are attending as an electrician's mate in a UK house (230 V, BS 7671). The consumer unit has a main switch, two 30 mA RCDs and MCBs.\n\n1. Work out **what** tripped and what kind of fault that means.\n2. Find the cause **by test, not by guess**, and restore power.\n3. Before opening anything, complete **safe isolation**. The simulation will stop you if you skip a step, just as a good supervisor would.\n\nUse the workbench in the *Apps* tab: choose an instrument, then click a component.",
+ "world": {
+  "nodes": [
+   {
+    "id": "supply",
+    "label": "Supply 230 V",
+    "kind": "cloud",
+    "status": "healthy",
+    "detail": "DNO supply, TN-C-S",
+    "x": 6,
+    "y": 50
+   },
+   {
+    "id": "cu",
+    "label": "Consumer unit",
+    "kind": "service",
+    "status": "degraded",
+    "detail": "Main switch, RCD 1, RCD 2 (tripped)",
+    "x": 34,
+    "y": 50
+   },
+   {
+    "id": "kitchen",
+    "label": "Kitchen ring",
+    "kind": "client",
+    "status": "down",
+    "detail": "Sockets dead",
+    "x": 64,
+    "y": 30
+   },
+   {
+    "id": "cooker",
+    "label": "Cooker circuit",
+    "kind": "client",
+    "status": "down",
+    "detail": "Also on RCD 2",
+    "x": 64,
+    "y": 72
+   },
+   {
+    "id": "customer",
+    "label": "Customer",
+    "kind": "person",
+    "status": "unknown",
+    "detail": "Needs the fridge back on",
+    "x": 92,
+    "y": 50
+   }
+  ],
+  "links": [
+   {
+    "from": "supply",
+    "to": "cu",
+    "label": "tails"
+   },
+   {
+    "from": "cu",
+    "to": "kitchen",
+    "label": "MCB 2"
+   },
+   {
+    "from": "cu",
+    "to": "cooker",
+    "label": "MCB 3"
+   }
+  ]
+ },
+ "hosts": [],
+ "logs": [],
+ "apps": [
+  {
+   "id": "bench",
+   "name": "Electrical workbench (simulated)",
+   "node_id": "cu",
+   "accent": "#f59e0b",
+   "screens": [
+    {
+     "id": "cu",
+     "title": "Consumer unit · kitchen",
+     "widgets": [
+      {
+       "type": "workbench",
+       "id": "bench",
+       "title": "Consumer unit and kitchen ring",
+       "text": "Pick an instrument, then click a component to measure it, or use its action buttons. Readings change as you work.",
+       "tools": [
+        "Two-pole voltage tester",
+        "Proving unit",
+        "Insulation resistance tester (500 V)"
+       ],
+       "items": [
+        {
+         "id": "main",
+         "label": "Main switch 100 A",
+         "kind": "isolator",
+         "status": "on",
+         "detail": "Double-pole main switch for the whole installation.",
+         "x": 10,
+         "y": 18,
+         "readings": [
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "ON. Isolating here would kill the whole house, including the customer's freezer and alarm: isolate the smallest part that makes you safe.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": []
+        },
+        {
+         "id": "rcd2",
+         "label": "RCD 2 · 30 mA Type A",
+         "kind": "rcd",
+         "status": "off",
+         "detail": "Protects the kitchen ring (MCB 2) and the cooker circuit (MCB 3).",
+         "x": 32,
+         "y": 18,
+         "readings": [
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Lever DOWN: tripped. Test button intact, no scorching.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Two-pole voltage tester",
+           "requires": [],
+           "value": "Measure at the outgoing circuit, not inside the consumer unit: that needs a qualified electrician and the cover off.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Reset RCD 2",
+           "message": "RCD 2 holds. Kitchen sockets are live again.",
+           "effects": {
+            "set_flags": [
+             "rcd_reset"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "rcd2",
+              "status": "on"
+             },
+             {
+              "node_id": "kitchen",
+              "status": "healthy"
+             }
+            ],
+            "message": ""
+           },
+           "requires": [
+            "unplugged:kettle",
+            "unplugged:toaster",
+            "unplugged:fridge"
+           ],
+           "blocked_message": "You push the lever up and it snaps straight back down: something connected is still leaking current to earth. Unplug every appliance on these circuits, then reset. Repeated resets into a fault wear the RCD's contacts."
+          }
+         ]
+        },
+        {
+         "id": "mcb2",
+         "label": "MCB 2 · B32 kitchen ring",
+         "kind": "mcb",
+         "status": "on",
+         "detail": "Overcurrent protection for the kitchen socket ring (2.5 mm² T&E).",
+         "x": 54,
+         "y": 18,
+         "readings": [
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Lever UP (on). An MCB trips on overcurrent, not on earth leakage.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Switch OFF, lock off and tag",
+           "message": "MCB 2 locked off with your lock-off device and personal padlock; 'DANGER: men at work' tag fitted; key in your pocket.",
+           "effects": {
+            "set_flags": [
+             "ring_isolated",
+             "ring_locked"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "mcb2",
+              "status": "off"
+             }
+            ],
+            "message": ""
+           },
+           "requires": [],
+           "blocked_message": ""
+          },
+          {
+           "label": "Remove lock and switch ON",
+           "message": "Lock removed, MCB 2 back on.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [
+             "ring_isolated",
+             "ring_locked",
+             "proved_dead"
+            ],
+            "node_status": [
+             {
+              "node_id": "mcb2",
+              "status": "on"
+             }
+            ],
+            "message": ""
+           },
+           "requires": [
+            "ring_locked"
+           ],
+           "blocked_message": "It is not locked off."
+          }
+         ]
+        },
+        {
+         "id": "tester",
+         "label": "Two-pole tester (GS38)",
+         "kind": "test instrument",
+         "status": "unknown",
+         "detail": "Shrouded probes, fused leads. Prove it before AND after testing.",
+         "x": 80,
+         "y": 18,
+         "readings": [
+          {
+           "tool": "Proving unit",
+           "requires": [],
+           "value": "Tester lights at 230 V on the proving unit: the tester is working.",
+           "effects": {
+            "set_flags": [
+             "tester_proved"
+            ],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "GS38 probes (≤4 mm exposed tip), leads undamaged. A tester is only trustworthy once proved on a known source.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": []
+        },
+        {
+         "id": "socket",
+         "label": "Double socket (worktop)",
+         "kind": "socket outlet",
+         "status": "unknown",
+         "detail": "13 A twin socket on the kitchen ring, above the worktop.",
+         "x": 54,
+         "y": 50,
+         "readings": [
+          {
+           "tool": "Two-pole voltage tester",
+           "requires": [
+            "ring_isolated",
+            "tester_proved"
+           ],
+           "value": "L–N 0 V · L–E 0 V · N–E 0 V. Circuit proved dead. (Re-prove your tester on the proving unit to complete prove–test–prove.)",
+           "effects": {
+            "set_flags": [
+             "proved_dead"
+            ],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Two-pole voltage tester",
+           "requires": [
+            "ring_isolated"
+           ],
+           "value": "0 V on all three, but your tester has not been proved on a known source. A tester with a dead battery reads exactly like this.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Two-pole voltage tester",
+           "requires": [
+            "rcd_reset"
+           ],
+           "value": "L–N 231 V · L–E 230 V · N–E 1 V: LIVE.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Two-pole voltage tester",
+           "requires": [],
+           "value": "0 V, but only because the RCD is off. Anyone could reset it while you work: that is not isolation.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Faceplate secure, no scorching, no smell of burning.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Remove faceplate and inspect terminals",
+           "message": "Terminals tight, conductors undamaged, CPC connected. The socket is not the fault.",
+           "effects": {
+            "set_flags": [
+             "faceplate_off"
+            ],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [
+            "ring_locked",
+            "proved_dead"
+           ],
+           "blocked_message": "STOP. Safe isolation is not complete (isolate, lock off, prove the tester, test dead L–N, L–E, N–E). Opening an accessory on an unproven circuit is how people are electrocuted: someone could reset the RCD while your fingers are on the terminals."
+          }
+         ]
+        },
+        {
+         "id": "kettle",
+         "label": "Kettle",
+         "kind": "appliance (Class I)",
+         "status": "unknown",
+         "detail": "Metal-bodied, earthed appliance on the kitchen ring.",
+         "x": 28,
+         "y": 82,
+         "readings": [
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [
+            "unplugged:kettle"
+           ],
+           "value": "L+N to earth at 500 V DC: 0.18 MΩ. FAIL: below the 1 MΩ minimum for a Class I appliance.",
+           "effects": {
+            "set_flags": [
+             "kettle_tested"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "kettle",
+              "status": "fault"
+             }
+            ],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [],
+           "value": "Unplug the appliance before an insulation resistance test: never test equipment connected to the supply.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Limescale around the element plate and a dried water stain under the base.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Unplug",
+           "message": "Kettle unplugged.",
+           "effects": {
+            "set_flags": [
+             "unplugged:kettle"
+            ],
+            "clear_flags": [
+             "plugged:kettle"
+            ],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [],
+           "blocked_message": ""
+          },
+          {
+           "label": "Plug back in and switch on",
+           "message": "Click, then BANG: RCD 2 trips the instant the kettle element heats. Kitchen dead again.",
+           "effects": {
+            "set_flags": [
+             "kettle_trips"
+            ],
+            "clear_flags": [
+             "rcd_reset",
+             "unplugged:kettle"
+            ],
+            "node_status": [
+             {
+              "node_id": "rcd2",
+              "status": "off"
+             },
+             {
+              "node_id": "kitchen",
+              "status": "down"
+             }
+            ],
+            "message": ""
+           },
+           "requires": [
+            "rcd_reset"
+           ],
+           "blocked_message": "Nothing happens: the kitchen sockets are dead while RCD 2 is off."
+          },
+          {
+           "label": "Label DO NOT USE and withdraw from service",
+           "message": "Kettle bagged and labelled 'DO NOT USE: failed insulation test 0.18 MΩ'. Customer informed.",
+           "effects": {
+            "set_flags": [
+             "kettle_withdrawn"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "kettle",
+              "status": "off"
+             }
+            ],
+            "message": ""
+           },
+           "requires": [
+            "unplugged:kettle",
+            "kettle_tested"
+           ],
+           "blocked_message": "Test before you condemn: unplug it and confirm the fault with an insulation resistance test first."
+          }
+         ]
+        },
+        {
+         "id": "toaster",
+         "label": "Toaster",
+         "kind": "appliance (Class I)",
+         "status": "unknown",
+         "detail": "Metal-bodied, earthed appliance on the kitchen ring.",
+         "x": 54,
+         "y": 82,
+         "readings": [
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [
+            "unplugged:toaster"
+           ],
+           "value": "L+N to earth at 500 V DC: >299 MΩ. PASS.",
+           "effects": {
+            "set_flags": [
+             "toaster_tested"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "toaster",
+              "status": "ok"
+             }
+            ],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [],
+           "value": "Unplug the appliance before an insulation resistance test: never test equipment connected to the supply.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Lead, plug and casing look intact.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Unplug",
+           "message": "Toaster unplugged.",
+           "effects": {
+            "set_flags": [
+             "unplugged:toaster"
+            ],
+            "clear_flags": [
+             "plugged:toaster"
+            ],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [],
+           "blocked_message": ""
+          },
+          {
+           "label": "Plug back in and switch on",
+           "message": "Toaster on. RCD 2 holds.",
+           "effects": {
+            "set_flags": [
+             "plugged:toaster",
+             "toaster_ok"
+            ],
+            "clear_flags": [
+             "unplugged:toaster"
+            ],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [
+            "rcd_reset"
+           ],
+           "blocked_message": "Nothing happens: the kitchen sockets are dead while RCD 2 is off."
+          }
+         ]
+        },
+        {
+         "id": "fridge",
+         "label": "Fridge-freezer",
+         "kind": "appliance (Class I)",
+         "status": "unknown",
+         "detail": "Metal-bodied, earthed appliance on the kitchen ring.",
+         "x": 80,
+         "y": 82,
+         "readings": [
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [
+            "unplugged:fridge"
+           ],
+           "value": "L+N to earth at 500 V DC: 48 MΩ. PASS.",
+           "effects": {
+            "set_flags": [
+             "fridge_tested"
+            ],
+            "clear_flags": [],
+            "node_status": [
+             {
+              "node_id": "fridge",
+              "status": "ok"
+             }
+            ],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Insulation resistance tester (500 V)",
+           "requires": [],
+           "value": "Unplug the appliance before an insulation resistance test: never test equipment connected to the supply.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          },
+          {
+           "tool": "Look",
+           "requires": [],
+           "value": "Lead, plug and casing look intact.",
+           "effects": {
+            "set_flags": [],
+            "clear_flags": [],
+            "node_status": [],
+            "message": ""
+           }
+          }
+         ],
+         "actions": [
+          {
+           "label": "Unplug",
+           "message": "Fridge-freezer unplugged.",
+           "effects": {
+            "set_flags": [
+             "unplugged:fridge"
+            ],
+            "clear_flags": [
+             "plugged:fridge"
+            ],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [],
+           "blocked_message": ""
+          },
+          {
+           "label": "Plug back in and switch on",
+           "message": "Fridge-freezer on. RCD 2 holds.",
+           "effects": {
+            "set_flags": [
+             "plugged:fridge",
+             "fridge_ok"
+            ],
+            "clear_flags": [
+             "unplugged:fridge"
+            ],
+            "node_status": [],
+            "message": ""
+           },
+           "requires": [
+            "rcd_reset"
+           ],
+           "blocked_message": "Nothing happens: the kitchen sockets are dead while RCD 2 is off."
+          }
+         ]
+        }
+       ],
+       "links": [
+        {
+         "from": "main",
+         "to": "rcd2",
+         "label": "busbar"
+        },
+        {
+         "from": "rcd2",
+         "to": "mcb2",
+         "label": ""
+        },
+        {
+         "from": "mcb2",
+         "to": "socket",
+         "label": "ring final"
+        },
+        {
+         "from": "socket",
+         "to": "kettle",
+         "label": "plug"
+        },
+        {
+         "from": "socket",
+         "to": "toaster",
+         "label": "plug"
+        },
+        {
+         "from": "socket",
+         "to": "fridge",
+         "label": "plug"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "objectives": [
+  {
+   "id": "e1",
+   "text": "Read the consumer unit",
+   "kind": "answer",
+   "question": "What tripped, and what does that tell you?",
+   "options": [
+    "An MCB: an overload or short circuit",
+    "The RCD: current is leaking to earth somewhere it protects",
+    "The main switch: a supply fault",
+    "Nothing: it is a power cut"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "flags": [],
+   "explanation": "RCD 2's lever is down while the MCBs are up. An RCD trips when line and neutral currents differ (≥30 mA here), meaning current is returning through earth, or through a person."
+  },
+  {
+   "id": "e2",
+   "text": "Restore power without the faulty load",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "rcd_reset"
+   ],
+   "explanation": "Unplug everything on the RCD's circuits, then reset. If it holds, the fault is in something that was plugged in, not the fixed wiring."
+  },
+  {
+   "id": "e3",
+   "text": "Prove which appliance is faulty by test",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "kettle_tested"
+   ],
+   "explanation": "Plugging back one at a time points to a suspect; an insulation resistance test at 500 V DC (L+N to earth) proves it: 0.18 MΩ against a 1 MΩ minimum."
+  },
+  {
+   "id": "e4",
+   "text": "Name the culprit",
+   "kind": "answer",
+   "question": "Which item caused the trips?",
+   "options": [
+    "The worktop socket",
+    "The kettle",
+    "The toaster",
+    "The fridge-freezer"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "flags": [],
+   "explanation": "The kettle: a water-damaged element leaks to its earthed body. Heat and moisture make such faults appear only in use."
+  },
+  {
+   "id": "e5",
+   "text": "Inspect the socket under safe isolation",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "ring_locked",
+    "proved_dead",
+    "faceplate_off"
+   ],
+   "explanation": "Isolate (MCB 2), lock off and tag, prove the tester on a proving unit, test dead L–N, L–E, N–E, re-prove, and only then remove the faceplate."
+  },
+  {
+   "id": "e6",
+   "text": "Make the hazard safe for the customer",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "kettle_withdrawn"
+   ],
+   "explanation": "Withdraw it from use and label it with the reason, then tell the customer why. Never leave a known-faulty appliance where it will be used again."
+  }
+ ],
+ "hints": [
+  "Look at the consumer unit first: which lever is down, an RCD or an MCB? They protect against different things.",
+  "Unplug the kettle, toaster and fridge, reset RCD 2, then plug them back one at a time. Confirm the suspect with the insulation resistance tester.",
+  "For the socket: MCB 2 → 'Switch OFF, lock off and tag'; Proving unit on the tester; Two-pole tester on the socket; then 'Remove faceplate'. Finish by withdrawing the kettle."
+ ],
+ "debrief": "### What happened\nThe kettle's element sheath had cracked and taken in water. With the element hot, current leaked from line to the kettle's earthed metal body. The difference between line and neutral current exceeded RCD 2's 30 mA rating, so it disconnected in tens of milliseconds, which is exactly what it is for. The customer's two resets just kept re-energising the fault.\n\n### How a professional approaches it\n1. **Read the protective devices**: RCD (earth leakage) vs MCB (overcurrent) points to completely different causes.\n2. **Split the problem**: all loads off → reset. Holds? The fault is in a load. Trips with everything unplugged? The fault is in the fixed wiring: isolate circuits one by one and insulation-test the installation (qualified electrician work).\n3. **Prove it by test**: insulation resistance at 500 V DC; Class I appliances should exceed 1 MΩ (IET Code of Practice for in-service inspection and testing).\n4. **Safe isolation, every time**: isolate → lock off & tag → prove tester → test dead (L–N, L–E, N–E) → re-prove tester. HSE guidance GS38 covers the test equipment.\n\n### Elsewhere in the world\nNorth America uses **GFCI** devices (typically tripping at about 4–6 mA on 120 V receptacles) and NFPA 70E for safe work practices; IEC countries use RCDs under IEC 60364. The method is the same.\n\n### Know your limits\nResetting devices, unplugging appliances and withdrawing faulty equipment are safe for anyone. Opening accessories, testing the fixed installation and repairs are work for a competent, qualified person. In the UK, much domestic work is notifiable under Part P of the Building Regulations."
+}

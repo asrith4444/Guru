@@ -1,0 +1,145 @@
+{
+ "id": "e1",
+ "title": "Safe isolation and RCD fault-finding",
+ "lesson": "## Why this matters\nA tripping RCD is the most common electrical call-out in homes. It is also where untrained people get hurt: they reset it again and again, or open a socket \"because the power is off\". A professional finds the cause in minutes and never works on anything they have not proved dead.\n\n## The mental model\nAn **RCD** (residual current device) compares the current going out on the line conductor with the current coming back on neutral. In a healthy circuit they are equal. If they differ by more than the device's rating (30 mA for socket circuits under BS 7671 / IEC 60364), the missing current is flowing somewhere else, through earth or through a person, and the RCD disconnects, typically within 40 ms at five times its rating.\n\n```\n L ──►──[ RCD compares L and N ]──►── appliance ──┐\n N ──◄──[                       ]──◄──────────────┘\n                 leakage ──► earth (or a person)   ⇒  I(L) ≠ I(N)  ⇒  trip\n```\n\nAn **MCB** (miniature circuit breaker) protects the cable from *overcurrent*: too much load, or a short circuit. Different device, different cause.\n\n## Worked example\nCall-out: kitchen sockets dead; in the consumer unit, RCD 2 is down and every MCB is up.\n\n1. RCD down, MCBs up → this is **earth leakage**, not overload.\n   > Pause and predict: if you unplug everything and the RCD then resets and holds, where must the fault be?\n2. Unplug every appliance on the circuits RCD 2 protects, then reset it. It holds, so the fault is in something that was plugged in, not in the fixed wiring.\n3. Plug appliances back **one at a time**, switching each on. The kettle trips it the moment its element heats.\n4. Confirm with an **insulation resistance test** at 500 V DC, line and neutral joined, to earth: 0.18 MΩ. A Class I appliance should read above 1 MΩ. Confirmed.\n5. Withdraw the kettle from use, label it, and explain to the customer.\n\n## The 20% you will use constantly\n| Situation | What it means | First move |\n|---|---|---|\n| RCD down, MCBs up | Earth leakage on that RCD's circuits | Unplug all loads, reset, add back one by one |\n| One MCB down | Overload or short on that circuit | Reduce load; if it trips instantly, suspect a short |\n| RCD trips with everything unplugged | Fault in the fixed installation | Qualified electrician: isolate circuits, insulation-test |\n| Trips only when wet or hot | Moisture or element fault | Test after use; check outdoor sockets and heaters |\n\n**Safe isolation, always in this order:** identify the circuit → isolate → lock off with your own padlock and tag → prove the two-pole tester on a known source (proving unit) → test dead L–N, L–E, N–E → re-prove the tester → only then work.\n\n## How it breaks\n- **Resetting repeatedly \"until it holds\"**: you keep re-energising a fault, and RCD contacts wear. One reset with loads removed tells you more.\n- **Testing with an unproved tester**: a flat battery shows 0 V on a live circuit. That is why prove–test–prove exists.\n- **Using a non-contact \"pen\" to prove dead**: fine as an indicator, never as proof. Use a GS38-compliant two-pole tester.\n- **Relying on the RCD being off as isolation**: anyone can reset it while you work. Lock off the circuit's own device.\n\n## Don't confuse it with\n**RCD vs MCB vs RCBO**: an RCD protects people from earth leakage, an MCB protects cables from overcurrent, and an **RCBO** does both for a single circuit (so one fault no longer takes out half the house). In North America the people-protection device at sockets is the **GFCI**, which trips at about 4–6 mA.\n\n## Cheat sheet\n- RCD trip = leakage to earth; MCB trip = too much current\n- All loads off → reset → back one at a time → confirm with an insulation test\n- Class I appliance insulation resistance: > 1 MΩ at 500 V DC\n- Safe isolation: isolate · lock · prove · test (L–N, L–E, N–E) · re-prove\n- Fixed-wiring faults and opening accessories: competent, qualified persons only\n",
+ "key_points": [
+  "An RCD trips on leakage to earth; an MCB trips on overcurrent",
+  "Unplug all loads, reset once, then add loads back one at a time",
+  "Prove a suspect with an insulation test: Class I appliances > 1 MΩ at 500 V DC",
+  "Safe isolation: isolate, lock off, prove tester, test dead L–N/L–E/N–E, re-prove",
+  "An RCD being off is not isolation"
+ ],
+ "cards": [
+  {
+   "skill_id": "rcd_principles",
+   "front": "What does an RCD measure?",
+   "back": "The difference between line and neutral current (residual current)"
+  },
+  {
+   "skill_id": "rcd_principles",
+   "front": "Typical RCD rating for socket circuits under BS 7671?",
+   "back": "30 mA"
+  },
+  {
+   "skill_id": "fault_finding",
+   "front": "RCD trips even with every appliance unplugged. Where is the fault?",
+   "back": "In the fixed installation: a job for a qualified electrician"
+  },
+  {
+   "skill_id": "insulation_testing",
+   "front": "Minimum insulation resistance for a Class I appliance at 500 V DC?",
+   "back": "1 MΩ"
+  },
+  {
+   "skill_id": "safe_isolation",
+   "front": "The three test combinations when proving dead?",
+   "back": "L–N, L–E, N–E"
+  },
+  {
+   "skill_id": "safe_isolation",
+   "front": "Why prove the tester before AND after testing dead?",
+   "back": "A faulty tester (e.g. flat battery) shows 0 V on a live circuit"
+  }
+ ],
+ "quiz": [
+  {
+   "id": "e1q1",
+   "kind": "single",
+   "prompt": "Kitchen sockets are dead. RCD 2 is down; all MCBs are up. What kind of fault is this?",
+   "options": [
+    "Overload",
+    "Earth leakage",
+    "Supply failure",
+    "Loose neutral at the main fuse"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "An RCD trips on residual (leakage) current; an MCB trips on overcurrent.",
+   "skill_id": "rcd_principles"
+  },
+  {
+   "id": "e1q2",
+   "kind": "single",
+   "prompt": "Everything is unplugged and the RCD now resets and holds. Where is the fault most likely?",
+   "options": [
+    "Fixed wiring",
+    "An appliance that was plugged in",
+    "The RCD itself",
+    "The supply company's side"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "Removing the loads removed the leakage, so the leak was in a load.",
+   "skill_id": "fault_finding"
+  },
+  {
+   "id": "e1q3",
+   "kind": "multi",
+   "prompt": "Which steps belong to safe isolation? (select all)",
+   "options": [
+    "Lock off and tag the circuit's device",
+    "Prove the tester on a known source",
+    "Test dead L–N, L–E and N–E",
+    "Confirm dead with a non-contact pen and start work"
+   ],
+   "correct": [
+    0,
+    1,
+    2
+   ],
+   "accept": [],
+   "explanation": "A non-contact detector is an indicator only; proving dead needs a proved two-pole tester.",
+   "skill_id": "safe_isolation"
+  },
+  {
+   "id": "e1q4",
+   "kind": "text",
+   "prompt": "What residual current rating (in mA) is typical for RCDs protecting UK socket circuits?",
+   "options": [],
+   "correct": [],
+   "accept": [
+    "^\\s*30\\s*(ma|milliamps?)?\\s*$"
+   ],
+   "explanation": "30 mA: low enough to protect people from electric shock.",
+   "skill_id": "rcd_principles"
+  },
+  {
+   "id": "e1q5",
+   "kind": "single",
+   "prompt": "A kettle reads 0.18 MΩ (L+N to earth, 500 V DC). What do you do?",
+   "options": [
+    "Keep using it: it boils fine",
+    "Retest at 250 V and keep it if it passes",
+    "Withdraw it from use and label it",
+    "Replace the RCD with a 100 mA one"
+   ],
+   "correct": [
+    2
+   ],
+   "accept": [],
+   "explanation": "It fails the 1 MΩ minimum for Class I equipment. Never 'fix' a leakage fault by desensitising the protection.",
+   "skill_id": "insulation_testing"
+  },
+  {
+   "id": "e1q6",
+   "kind": "single",
+   "prompt": "Why is 'the RCD is off' not safe isolation?",
+   "options": [
+    "It only disconnects line",
+    "Anyone can reset it while you work",
+    "RCDs never fully disconnect",
+    "It is safe isolation"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "Isolation must be secured: lock off the circuit's device with your own padlock and prove dead.",
+   "skill_id": "safe_isolation"
+  }
+ ]
+}

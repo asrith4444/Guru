@@ -25,6 +25,16 @@ Principles (apply them, do not lecture about them):
    issue trackers) as practice. Cite sources in lessons.
 7. Accuracy: current stable versions, real command syntax, real tool concepts and terminology.
    Never invent APIs, flags or facts. Use web search when available to verify.
+8. Professional standard, any field: teach the way the profession itself trains and assesses people.
+   Use the field's real competency frameworks, codes and standards (for example NEC / IEC 60364 / BS 7671
+   for electrical work, IPC/UPC plumbing codes, IEEE 1800 SystemVerilog and sign-off flows for chip design,
+   ICAO for aviation), its real tools and instruments with realistic readings and units, its real job tasks,
+   and its vocabulary. Where rules differ by country or jurisdiction, say which one you use and how others differ.
+   Be specific: numbers, tolerances, part names, commands, procedures. Never vague advice.
+9. Safety first where the work can hurt people or property (electricity, gas, heights, chemicals, machinery,
+   medicine, structural work): teach the safe order of work (isolate, lock out, prove dead / depressurise,
+   PPE), make simulations refuse unsafe actions and explain the consequence, and state plainly which tasks
+   legally require a licence, certification or supervised hours that a course cannot replace.
 "#;
 
 fn outline(course: &Course) -> String {
@@ -44,6 +54,12 @@ fn outline(course: &Course) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     );
+    if !course.goal_context.trim().is_empty() {
+        s.push_str(&format!(
+            "This course is one stage of a larger roadmap:\n{}\n",
+            course.goal_context
+        ));
+    }
     for m in &course.modules {
         s.push_str(&format!(
             "- {} {} ({} min): {}\n",
@@ -76,19 +92,25 @@ title, and a one-line note.
     )
 }
 
-pub fn plan(
-    topic: &str,
-    goal: &str,
-    level: u8,
-    level_label: &str,
-    can_do: &str,
-    hours: f32,
-    modules: usize,
-) -> String {
+/// Plan prompt for a freshly created course (topic, goal, level and hours set).
+pub fn plan(course: &Course, can_do: &str, modules: usize) -> String {
+    let (topic, goal, level, level_label, hours) = (
+        &course.topic,
+        &course.goal,
+        course.level,
+        &course.level_label,
+        course.hours,
+    );
+    let goal_context = &course.goal_context;
+    let goal_context = if goal_context.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\nThis course is one stage of the learner's roadmap. Stay inside this stage, build on earlier stages and\nprepare for later ones:\n{goal_context}\n")
+    };
     format!(
         r#"{METHOD}
 TASK: plan a {hours}-hour Guru course with exactly {modules} modules.
-
+{goal_context}
 Topic: {topic}
 Learner goal: {goal}
 Target level: {level_label} ({level}/100). At this level the learner can: {can_do}
@@ -103,7 +125,10 @@ Return:
     Kubernetes via kubectl; Jenkins pipelines; Excel-like tables) so the learner practises without installing it;
   * "incident": a broken or compromised system to investigate from logs, terminals and dashboards, then fix;
   * "guided": a step-by-step build or configuration task with checks;
-  * "roleplay": a conversation (customer, interviewer, native speaker, stakeholder) for language and soft skills.
+  * "roleplay": a conversation (customer, interviewer, native speaker, stakeholder) for language and soft skills;
+  * "workbench": hands-on physical work on a simulated bench: an electrical panel, a plumbing system, an HVAC
+    unit, an engine, a circuit board. Learners pick instruments (multimeter, pressure gauge, oscilloscope…),
+    read realistic measurements, and act in a safe order (unsafe actions are refused and explained).
   Pick what gives the most realistic practice for this topic. Premises must be specific and realistic.
 - capstone: one final simulation (id "capstone") that integrates the whole course under realistic pressure.
 - research: the best Stack Exchange site for real problems in this topic ("" if none), 1-3 tags, 2-4 queries.
@@ -179,13 +204,23 @@ pub const SIM_SPEC: &str = r#"HOW GURU PLAYS A SIMULATION (design for this engin
   query (an editor: regex-matched responses returning table/timeseries/text/error, plus a fallback error for
   anything else — make the fallback teach, e.g. the real error message), form (fields + rules on submitted
   values), actions (buttons), editor (the learner edits a file; checks are regexes that must / must not match;
-  effects fire when all checks pass), chat (a counterpart who replies to learner messages matching `expect`).
+  effects fire when all checks pass), chat (a counterpart who replies to learner messages matching `expect`),
+  workbench (physical work: `tools` the learner can pick — instruments such as "Two-pole voltage tester",
+  "Multimeter (Ω)", "Pressure gauge", "Thermal camera", "Oscilloscope" — and `items` placed at x,y 0-100 with a
+  status (ok | fault | warning | off | on | unknown), `links` (wires, pipes, traces) between items, `readings`
+  per tool, and `actions`). Readings are tried in order and the first whose `requires` flags are all set is
+  shown, so measurements change as the learner works (e.g. 230 V before isolation, 0 V after). Use "Look" as
+  the tool for visual inspection. Give readings real units and realistic values with tolerances.
+- actions and buttons may list `requires` flags; if any is missing the action is refused and `blocked_message`
+  is shown. Use this to enforce professional order of work and safety (isolate → lock off → prove dead →
+  work), and make the blocked message say what would happen in real life.
   Recreate the real tool's screens, terminology, query language and workflow faithfully (name it like
   "Grafana (simulated)"; no logos or trademarks beyond the name).
 - effects: set_flags, node_status changes and a toast message. Built-in actions set flags automatically:
   kill → "killed:<pid>" and "killed:<process name>"; systemctl stop/start/restart/disable/enable →
   "stopped:<svc>" etc.; rm → "removed:<path>" (also for any parent directory removed); cat/head/tail/grep on a
-  file → "read:<path>"; opening a log stream → "viewed:<stream id>".
+  file → "read:<path>"; opening a log stream → "viewed:<stream id>"; any reading on a workbench item →
+  "inspected:<item id>". Effects' node_status may also target workbench items (to change their status).
 - objectives: "answer" (a question with options+correct indices, or free text with accept regexes) or "state"
   (all listed flags must be set by the learner's actions). Every state flag MUST be producible by a built-in
   action or by an effect somewhere in the simulation. Mix finding (answer) and fixing (state) objectives.
@@ -243,6 +278,63 @@ pub fn fix_simulation(errors: &[String]) -> String {
     format!(
         "\n\nYOUR PREVIOUS ATTEMPT FAILED VALIDATION. Return the complete simulation again with these problems fixed:\n- {}\n",
         errors.join("\n- ")
+    )
+}
+
+pub fn clarify(goal: &str) -> String {
+    format!(
+        r#"{METHOD}
+TASK: a learner told Guru their goal. Before planning, ask the 3-5 questions a senior practitioner and training
+manager in this field would ask to plan the right path. Any field is possible (software, trades like plumbing or
+electrical work, chip design, medicine, law, languages, music, business…).
+
+Goal: {goal}
+
+Ask only what changes the plan, for example: current experience and adjacent skills; the purpose (job, licence or
+certification, own home or project, curiosity); country or jurisdiction when codes and licensing differ; the
+specialisation or context (e.g. residential vs industrial, analog vs digital, FPGA vs ASIC); the tools or
+equipment they have; how deep they want to go. Each question: short, concrete, with a one-line "why" and 3-5
+typical answers as options. Also restate the goal precisely and name the professional field.
+"#
+    )
+}
+
+pub fn goal_plan(goal: &str, answers: &[crate::goal::Answer]) -> String {
+    let answers: String = answers
+        .iter()
+        .filter(|a| !a.answer.trim().is_empty())
+        .map(|a| format!("- {}: {}\n", a.question, a.answer))
+        .collect();
+    format!(
+        r#"{METHOD}
+TASK: design a professional roadmap for this learner, the way an experienced practitioner and training manager
+would design an apprenticeship or a structured upskilling programme.
+
+Goal: {goal}
+Learner's answers:
+{answers}
+Return:
+- title, field (the professional domain, specific), destination: what the learner will be able to do at the end,
+  described concretely as a professional would (tasks, quality bar, tools), not vaguely.
+- standards: the competency frameworks, codes, standards and certifications this roadmap follows (name them
+  exactly, with the jurisdiction when relevant).
+- tools: the real tools, instruments and software of the trade (Guru will simulate them).
+- safety: the field's safety-critical rules (empty if not applicable).
+- beyond_guru: what honestly still needs the real world to reach the destination: licences, exams, supervised or
+  logged hours, physical practice with real equipment. Be specific (which exam, how many hours where defined).
+- stages: 3-8 stages in order, each one downloadable as an intense Guru course of 1-12 focused hours (aggressive
+  pacing: no filler). For each: title, why it comes here, level 0-100 (non-decreasing: beginner ~25, intermediate
+  ~60, advanced ~90), hours, 3-5 measurable outcomes ("can …"), competencies, the hands-on simulations it will
+  contain (specific scenarios with the real tools), and how mastery is assessed at the end.
+Use web search (when available) to confirm current standards, editions and licensing rules.
+"#
+    )
+}
+
+pub fn quality_feedback(problems: &[String]) -> String {
+    format!(
+        "\n\nYOUR PREVIOUS ATTEMPT WAS NOT GOOD ENOUGH TO BE WORTH THE LEARNER'S TIME. Return the complete result again, fixing:\n- {}\n",
+        problems.join("\n- ")
     )
 }
 

@@ -129,9 +129,15 @@ export class SimEngine {
     this.flags = new Set();
     this.nodeStatus = {};
     for (const n of spec.world?.nodes || []) this.nodeStatus[n.id] = n.status;
+    // Workbench items share the status map so effects can change them too.
+    for (const it of this.benchItems()) this.nodeStatus[it.id] = it.status;
     this.hosts = {};
     for (const h of spec.hosts || []) this.hosts[h.node_id] = new Host(h);
     this.answers = {};
+    // Objectives stay achieved once reached, even if later actions change the
+    // world again (e.g. a fault is re-introduced while testing).
+    this.achieved = new Set();
+    this.revealed = new Set();
     this.hintsUsed = 0;
     this.started = Date.now();
     this.listeners = new Set();
@@ -150,12 +156,34 @@ export class SimEngine {
   setFlag(f) {
     if (!this.flags.has(f)) {
       this.flags.add(f);
+      this.updateAchieved();
       this.emit('flag', f);
     }
   }
 
+  clearFlag(f) {
+    if (this.flags.delete(f)) this.emit('flag', f);
+  }
+
+  updateAchieved() {
+    for (const o of this.spec.objectives || []) {
+      if (o.kind === 'state' && (o.flags || []).every((f) => this.flags.has(f))) this.achieved.add(o.id);
+    }
+  }
+
+  benchItems() {
+    const out = [];
+    for (const a of this.spec.apps || []) for (const sc of a.screens || []) for (const w of sc.widgets || []) if (w.type === 'workbench') out.push(...(w.items || []));
+    return out;
+  }
+
+  missing(requires) {
+    return (requires || []).filter((f) => !this.flags.has(f));
+  }
+
   applyEffects(e) {
     if (!e) return [];
+    for (const f of e.clear_flags || []) this.clearFlag(f);
     for (const f of e.set_flags || []) this.setFlag(f);
     for (const ns of e.node_status || []) {
       this.nodeStatus[ns.node_id] = ns.status;
@@ -168,15 +196,31 @@ export class SimEngine {
 
   // ---------- objectives ----------
 
+  // Achieved by the learner (revealed objectives do not count).
   objectiveDone(o) {
-    if (o.kind === 'state') return (o.flags || []).every((f) => this.flags.has(f));
+    if (o.kind === 'state') return this.achieved.has(o.id) || (o.flags || []).every((f) => this.flags.has(f));
     return !!this.answers[o.id]?.correct;
+  }
+
+  // Done or revealed: the simulation can always be finished.
+  objectiveClosed(o) {
+    return this.objectiveDone(o) || this.revealed.has(o.id);
+  }
+
+  // "Show me": no dead ends. Returns the explanation; no credit is given.
+  reveal(id) {
+    const o = (this.spec.objectives || []).find((x) => x.id === id);
+    if (!o) return '';
+    if (!this.objectiveDone(o)) this.revealed.add(id);
+    this.emit('objective', id);
+    return o.explanation || '';
   }
 
   progress() {
     const objs = this.spec.objectives || [];
     const done = objs.filter((o) => this.objectiveDone(o)).length;
-    return { done, total: objs.length, complete: objs.length > 0 && done === objs.length };
+    const closed = objs.filter((o) => this.objectiveClosed(o)).length;
+    return { done, closed, total: objs.length, complete: objs.length > 0 && closed === objs.length };
   }
 
   // value: array of option indices, or a string for free text.
@@ -211,6 +255,7 @@ export class SimEngine {
       objectives_done: p.done,
       objectives_total: p.total,
       hints_used: this.hintsUsed,
+      revealed: this.revealed.size,
       seconds: Math.round((Date.now() - this.started) / 1000),
     };
   }
@@ -723,9 +768,26 @@ export class SimEngine {
     return { ok: false, message: widget.fallback || 'Not accepted.' };
   }
 
+  // Buttons and workbench actions: refused (and explained) until their
+  // requirements are met, which is how simulations teach safe order of work.
   pressButton(button) {
+    const missing = this.missing(button.requires);
+    if (missing.length) {
+      this.emit('blocked', button.blocked_message);
+      return { ok: false, message: button.blocked_message || 'Not possible yet.' };
+    }
     this.applyEffects(button.effects);
-    return button.message;
+    return { ok: true, message: button.message };
+  }
+
+  // Workbench: measure or look at an item with a tool. The first reading for
+  // that tool whose requirements are met wins, so readings follow the state.
+  inspect(item, tool) {
+    const reading = (item.readings || []).find((r) => r.tool === tool && this.missing(r.requires).length === 0);
+    this.setFlag(`inspected:${item.id}`);
+    if (!reading) return tool === 'Look' ? `${item.label}: nothing unusual to see.` : `No meaningful reading with the ${tool} here.`;
+    this.applyEffects(reading.effects);
+    return reading.value;
   }
 
   checkEditor(widget, content) {

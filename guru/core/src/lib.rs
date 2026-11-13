@@ -1,6 +1,7 @@
 //! guru-core: everything Guru does that is not drawing pixels.
 //!
 //! - `generator`: the "Download course" pipeline driving the Codex CLI
+//! - `goal`:      goal → clarifying questions → professional stage roadmap
 //! - `course`:    the offline course package and learner progress
 //! - `sim`:       the simulation spec and its validator
 //! - `scope`:     the beginner → advanced level bar and hour suggestions
@@ -12,6 +13,7 @@ pub mod codex;
 pub mod config;
 pub mod course;
 pub mod generator;
+pub mod goal;
 pub mod machine;
 pub mod prompts;
 pub mod research;

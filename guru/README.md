@@ -2,27 +2,33 @@
 
 **Learn any skill in hours, not weeks, by practising on simulations of the real thing.**
 
-Guru is a desktop app. You tell it what you want to learn and drag a bar to how far you
-want to get, from beginner through intermediate to advanced. It suggests how many hours
-that takes, then you click **Download course**. AI builds the whole course once: tight
-reading-first lessons, quizzes, flashcards, and **interactive simulations** of the tools
-and situations you would face at work. Then you study it like a downloaded video course,
-except there are no videos, no installs, no tool accounts, and no AI needed from that
-point on.
+Guru is a desktop app. It starts with one question: **What's your goal?** Anything: a trade
+(plumbing, electrical work, HVAC), a profession (DevOps, chip design, nursing, law), a tool,
+an exam, a language. Guru asks the 3–5 questions a senior practitioner would ask (your
+experience, the purpose, the country and its codes, the specialisation, your tools). It then
+builds a **professional roadmap** with:
+
+- the destination, described the way the profession describes it;
+- the standards and codes it follows (BS 7671, NEC, IEEE 1800…);
+- the tools of the trade;
+- the safety rules;
+- honest notes on what still needs the real world (licences, exams, supervised hours);
+- 3–8 **stages**, each with measurable outcomes, hands-on simulations and an assessment.
+
+Each stage is one click: **Download this stage**. AI builds a complete course once:
+reading-first lessons, quizzes, flashcards and **interactive simulations** of the tools and
+situations you would face at work. Then you study it like a downloaded video course. There
+are no videos, no installs, no tool accounts, and no AI needed from that point on.
+
+For a single topic there is also a **Quick course**: type the topic, drag a bar from
+beginner through intermediate to advanced, see the suggested hours, and download.
 
 ```
- ┌ Guru ───────────────────────────────────────────────────────────────────────────────┐
- │  What do you want to learn?   [ DevOps                                        ]      │
- │                                                                                      │
- │  Intermediate                                                       −   5 h   +      │
- │  Work independently on typical real-world tasks and fix the common failures.         │
- │  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━○──────────────────────────          │
- │  Beginner                     Intermediate                         Advanced          │
- │  7 modules · about 12 simulations · e.g. 1 hour a day for 5 days                     │
- │  Simulated inside Guru: Linux terminal · Grafana · CI/CD pipeline                    │
- │                                                                                      │
- │  [ ⬇ Download course ]                                                                │
- └──────────────────────────────────────────────────────────────────────────────────────┘
+ What's your goal?  [ Become an electrician's mate on UK homes                 ]  Plan my path →
+   → Experience?  None · DIY · Apprentice      → Which regulations?  UK (BS 7671) · US (NEC)
+   → Roadmap: 1 Safe isolation (2 h) → 2 Fault finding (3 h) → 3 Testing & inspection (4 h)
+              Standards: BS 7671, GS38 · Safety rules · What still needs the real world
+              [ ⬇ Download this stage ]
 ```
 
 ## Simulations instead of installs
@@ -44,18 +50,54 @@ Guru's built-in engine:
   file editors with checks, and chat counterparts for interviews, negotiations or
   language practice. Grafana, Kubernetes, Jenkins, a SQL console or a Spanish waiter are
   all recreated this way.
+- **Workbenches for physical work.** Consumer units, plumbing systems, HVAC units, engines
+  or circuit boards. You pick a real instrument (two-pole tester, insulation resistance
+  tester, pressure gauge, oscilloscope…), click a component, and get realistic readings
+  with real units that change as you work: 230 V before isolation, 0 V after. Unsafe
+  actions are **refused and explained**, for example opening a socket before you have
+  locked off the circuit and proved it dead with a proved tester.
 - **Objectives** that check what you found (multiple choice or free text) and what you
-  did (process killed, persistence removed, alert rule created). Graduated hints and a
-  debrief explain how a professional would handle it.
+  did (process killed, persistence removed, alert rule created, appliance withdrawn).
+  Graduated hints and a debrief explain how a professional would handle it.
+- **No dead ends.** After the hints run out, or after two wrong answers, **Show me how**
+  reveals that objective's answer and method, so you can always finish. Revealed
+  objectives earn no credit, and the debrief tells you which ones to replay.
 
 When you type something a scenario did not anticipate, you can optionally press **✦ Ask
 AI to simulate this command**. That is one Codex request; nothing else in a simulation
 uses AI.
 
-The built-in demo course (**Try the demo course**, no AI or sign-in needed) contains two
-full simulations: *3 a.m. page: web-01 is burning CPU* (a crypto-miner incident after an
-SSH brute force) and *Build the on-call dashboard and alert in Grafana* (data source,
-PromQL, alert rule).
+Two built-in demo courses work with no AI and no sign-in (links on the home screen):
+
+- **Incident response:** *3 a.m. page: web-01 is burning CPU* (a crypto-miner after an SSH
+  brute force) and *Build the on-call dashboard and alert in Grafana* (data source,
+  PromQL, alert rule).
+- **Electrical fault-finding:** *Kitchen sockets dead: find the fault, safely*. This is a
+  30 mA RCD tripped by a water-damaged kettle. You use a two-pole tester, a proving unit
+  and a 500 V insulation resistance tester, and safe isolation is enforced (BS 7671 /
+  GS38, with notes on the North American GFCI and NEC equivalents).
+
+## Built not to fail half-way, and to be worth your time
+
+- **Checked before it starts.** Codex installed, signed in, enough disk; otherwise Guru
+  says exactly what to fix *before* creating anything.
+- **Every AI request has a time limit** (20 minutes by default). A hung request is killed
+  and retried.
+- **Every asset is retried** up to 4 times with growing waits after dropped connections or
+  bad output.
+- **Usage limits pause rather than fail.** When your ChatGPT usage limit is hit, Guru
+  waits, then pauses the download with a clear message; press Resume later.
+- **A lost sign-in stops at once** with instructions. Retrying could not help, so Guru
+  doesn't waste attempts.
+- **Nothing built is ever lost.** Every finished lesson and simulation is a file, so
+  Resume only builds what's missing. A download interrupted by a crash or shutdown shows
+  up as "Interrupted, press Resume", never as stuck.
+- **Quality gates.** Thin lessons (too short, missing the required structure, too few
+  questions or flashcards) and thin simulations (too few objectives, nothing to *do*,
+  sparse logs, a short debrief) are sent back to Codex with the exact problems.
+  Unplayable simulations are never accepted.
+- **Fully logged.** Every step is written to `.guru/download.log` inside the course.
+
 
 ## How a course is built (the only AI-heavy step)
 
@@ -88,7 +130,7 @@ research behind it are in [docs/METHOD.md](docs/METHOD.md).
 
 Guru uses the operating system's own web view (WebKit on macOS and Linux, WebView2 on
 Windows) instead of shipping a copy of Chromium, so the app binary is about **5.5 MB**.
-Measured on Linux while playing a simulation, the whole app used about **220 MB** of RAM.
+Measured on Linux while playing a simulation, the whole app used about **215–220 MB** of RAM.
 That figure is the proportional set size across Guru's process and WebKit's two helper
 processes, with GPU compositing off, which Guru does by default on Linux. Nothing runs in
 the background when no course is downloading, and simulations need no containers, VMs or
@@ -118,19 +160,20 @@ the demo course.
 
 ```
 guru/
-  core/   guru-core: course package, simulation spec + validator, level bar,
+  core/   guru-core: goal roadmaps, course package, simulation spec + validator, level bar,
           download pipeline (drives `codex exec`), spaced repetition, Stack Exchange mining
   app/    guru-app: the Tauri desktop shell (commands + events)
   ui/     the interface: plain ES modules, no framework, no build step
-          ui/js/sim/engine.js plays simulations; ui/demo/ is the built-in demo course
+          ui/js/sim/engine.js plays simulations; ui/demo/ holds the built-in demo courses
   tools/  generators for the demo course and the app icon
 ```
 
 ## Tests
 
 ```bash
-cargo test --workspace                     # Rust: unit tests + full download pipeline against a fake Codex
-node --test ui/js/sim/engine.test.mjs      # simulation engine: both demo scenarios solved end to end
+cargo test --workspace                     # Rust: unit tests + goal → roadmap → stage download against a fake
+                                           # Codex that drops a connection, hangs, and returns thin and broken assets
+node --test ui/js/sim/engine.test.mjs      # simulation engine: all three demo scenarios solved end to end
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 

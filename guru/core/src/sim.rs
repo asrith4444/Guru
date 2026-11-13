@@ -123,6 +123,9 @@ pub struct CommandRule {
 #[serde(default)]
 pub struct Effects {
     pub set_flags: Vec<String>,
+    /// Undo earlier progress when the world changes back (e.g. plugging a faulty
+    /// appliance back in trips the RCD again).
+    pub clear_flags: Vec<String>,
     pub node_status: Vec<NodeStatus>,
     /// Shown to the learner as a notification ("Alert resolved", "Deploy started").
     pub message: String,
@@ -185,6 +188,8 @@ pub struct Screen {
 /// - actions:    buttons[]
 /// - editor:     language, path, text (initial content), checks[], effects (on success)
 /// - chat:       persona, text (opening line), turns[], fallback
+/// - workbench:  text (instructions), tools[], items[] (readings per tool, actions), links[];
+///   for physical work such as electrical panels, plumbing, HVAC, engines or circuit boards
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Widget {
@@ -213,6 +218,10 @@ pub struct Widget {
     pub buttons: Vec<Button>,
     pub checks: Vec<EditorCheck>,
     pub turns: Vec<ChatTurn>,
+    /// workbench: tools the learner can pick, items on the bench, connections.
+    pub tools: Vec<String>,
+    pub items: Vec<BenchItem>,
+    pub links: Vec<Link>,
     pub fallback: String,
     pub effects: Effects,
 }
@@ -271,6 +280,41 @@ pub struct FieldCondition {
 pub struct Button {
     pub label: String,
     pub message: String,
+    pub effects: Effects,
+    /// Flags that must already be set (e.g. "isolated", "proved_dead").
+    /// Without them the action is refused with `blocked_message`: this is how
+    /// simulations teach safe order of work.
+    pub requires: Vec<String>,
+    pub blocked_message: String,
+}
+
+/// A physical object on a workbench: a breaker, a valve, a pipe joint, a chip pin.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct BenchItem {
+    pub id: String,
+    pub label: String,
+    /// Free text: breaker, outlet, valve, pipe, boiler, resistor, fpga…
+    pub kind: String,
+    /// ok | fault | warning | off | on | unknown
+    pub status: String,
+    pub detail: String,
+    /// Position on the bench, 0-100 in both axes.
+    pub x: f32,
+    pub y: f32,
+    /// What each tool shows. The first reading for the chosen tool whose
+    /// `requires` flags are all set wins, so measurements change as the learner acts.
+    pub readings: Vec<Reading>,
+    pub actions: Vec<Button>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Reading {
+    /// One of the widget's `tools`, or "Look" for visual inspection.
+    pub tool: String,
+    pub requires: Vec<String>,
+    pub value: String,
     pub effects: Effects,
 }
 
@@ -343,7 +387,19 @@ pub fn builtin_flags(sim: &Simulation) -> HashSet<String> {
     for l in &sim.logs {
         f.insert(format!("viewed:{}", l.id));
     }
+    for w in widgets(sim) {
+        for it in &w.items {
+            f.insert(format!("inspected:{}", it.id));
+        }
+    }
     f
+}
+
+fn widgets(sim: &Simulation) -> impl Iterator<Item = &Widget> {
+    sim.apps
+        .iter()
+        .flat_map(|a| a.screens.iter())
+        .flat_map(|s| s.widgets.iter())
 }
 
 fn effect_flags(e: &Effects, out: &mut HashSet<String>) {
@@ -374,6 +430,14 @@ pub fn producible_flags(sim: &Simulation) -> HashSet<String> {
                 for t in &w.turns {
                     effect_flags(&t.effects, &mut f);
                 }
+                for it in &w.items {
+                    for r in &it.readings {
+                        effect_flags(&r.effects, &mut f);
+                    }
+                    for b in &it.actions {
+                        effect_flags(&b.effects, &mut f);
+                    }
+                }
             }
         }
     }
@@ -392,7 +456,9 @@ const WIDGETS: &[&str] = &[
     "actions",
     "editor",
     "chat",
+    "workbench",
 ];
+const ITEM_STATUSES: &[&str] = &["ok", "fault", "warning", "off", "on", "unknown"];
 
 /// Semantic validation: everything the engine needs to play the simulation
 /// must be consistent. Returns human-readable problems (empty = valid); these
@@ -448,20 +514,44 @@ pub fn validate(sim: &Simulation) -> Vec<String> {
             errs.push(format!("{what} references unknown node '{id}'"));
         }
     };
+    let items: HashSet<&str> = widgets(sim)
+        .flat_map(|w| w.items.iter())
+        .map(|i| i.id.as_str())
+        .collect();
+    let producible = producible_flags(sim);
     let check_effects = |what: &str, e: &Effects, errs: &mut Vec<String>| {
         for ns in &e.node_status {
-            if !nodes.contains(ns.node_id.as_str()) {
+            let id = ns.node_id.as_str();
+            if items.contains(id) {
+                if !ITEM_STATUSES.contains(&ns.status.as_str()) {
+                    errs.push(format!(
+                        "{what}: item status '{}' must be one of {ITEM_STATUSES:?}",
+                        ns.status
+                    ));
+                }
+            } else if !nodes.contains(id) {
                 errs.push(format!(
-                    "{what}: effect references unknown node '{}'",
-                    ns.node_id
+                    "{what}: effect references unknown node or item '{id}'"
                 ));
-            }
-            if !NODE_STATUSES.contains(&ns.status.as_str()) {
+            } else if !NODE_STATUSES.contains(&ns.status.as_str()) {
                 errs.push(format!(
                     "{what}: effect status '{}' is not valid",
                     ns.status
                 ));
             }
+        }
+    };
+    let check_requires = |what: &str, b: &Button, errs: &mut Vec<String>| {
+        for f in &b.requires {
+            if !producible.contains(f) {
+                errs.push(format!(
+                    "{what}: action '{}' requires flag '{f}' that nothing can set",
+                    b.label
+                ));
+            }
+        }
+        if !b.requires.is_empty() && b.blocked_message.trim().is_empty() {
+            errs.push(format!("{what}: action '{}' has requirements but no blocked_message explaining why it is refused", b.label));
         }
     };
 
@@ -582,6 +672,47 @@ pub fn validate(sim: &Simulation) -> Vec<String> {
                     "actions" => {
                         for b in &w.buttons {
                             check_effects(&at, &b.effects, &mut errs);
+                            check_requires(&at, b, &mut errs);
+                        }
+                    }
+                    "workbench" => {
+                        if w.items.is_empty() {
+                            errs.push(format!("{at}: needs items"));
+                        }
+                        let ids: HashSet<&str> = w.items.iter().map(|i| i.id.as_str()).collect();
+                        if ids.len() != w.items.len() {
+                            errs.push(format!("{at}: item ids must be unique"));
+                        }
+                        for l in &w.links {
+                            if !ids.contains(l.from.as_str()) || !ids.contains(l.to.as_str()) {
+                                errs.push(format!(
+                                    "{at}: link {}->{} references an unknown item",
+                                    l.from, l.to
+                                ));
+                            }
+                        }
+                        for it in &w.items {
+                            if !ITEM_STATUSES.contains(&it.status.as_str()) {
+                                errs.push(format!(
+                                    "{at}: item {} status must be one of {ITEM_STATUSES:?}",
+                                    it.id
+                                ));
+                            }
+                            for r in &it.readings {
+                                if r.tool != "Look" && !w.tools.contains(&r.tool) {
+                                    errs.push(format!("{at}: item {} has a reading for tool '{}' which is not in tools (or use \"Look\")", it.id, r.tool));
+                                }
+                                for f in &r.requires {
+                                    if !producible.contains(f) {
+                                        errs.push(format!("{at}: item {} reading requires flag '{f}' that nothing can set", it.id));
+                                    }
+                                }
+                                check_effects(&at, &r.effects, &mut errs);
+                            }
+                            for b in &it.actions {
+                                check_effects(&at, &b.effects, &mut errs);
+                                check_requires(&format!("{at} item {}", it.id), b, &mut errs);
+                            }
                         }
                     }
                     _ => {}
@@ -590,7 +721,6 @@ pub fn validate(sim: &Simulation) -> Vec<String> {
         }
     }
 
-    let producible = producible_flags(sim);
     let mut ids = HashSet::new();
     for o in &sim.objectives {
         if !ids.insert(o.id.as_str()) {
@@ -643,30 +773,124 @@ pub fn validate(sim: &Simulation) -> Vec<String> {
     errs
 }
 
+/// Is this simulation worth the learner's time? Unlike `validate`, these are
+/// richness problems: Codex is asked to fix them, but a valid simulation is
+/// accepted on the last attempt.
+pub fn quality(sim: &Simulation) -> Vec<String> {
+    let mut q = Vec::new();
+    if sim.objectives.len() < 3 {
+        q.push(format!(
+            "only {} objectives; give 3-6 that mix finding (answer) and doing (state)",
+            sim.objectives.len()
+        ));
+    }
+    if !sim.objectives.iter().any(|o| o.kind == "state") {
+        q.push(
+            "no objective requires the learner to act; add at least one 'state' objective".into(),
+        );
+    }
+    if sim.briefing.chars().count() < 150 {
+        q.push(
+            "the briefing is too short; set the scene, the learner's role and what is expected"
+                .into(),
+        );
+    }
+    if sim.hints.len() < 3 {
+        q.push("give 3 graduated hints (nudge, pointer, near-answer)".into());
+    }
+    if sim.debrief.chars().count() < 300 {
+        q.push("the debrief is too short; explain what happened, how a professional approaches it, and prevention".into());
+    }
+    let lines: usize = sim.logs.iter().map(|l| l.lines.len()).sum();
+    if !sim.logs.is_empty() && lines < 20 {
+        q.push(format!("logs have only {lines} lines in total; realistic logs need background noise around the signal (aim for 40+)"));
+    }
+    for h in &sim.hosts {
+        if h.files.len() + h.commands.len() < 4 {
+            q.push(format!(
+                "host {} has too little to explore; add realistic files and command rules",
+                h.hostname
+            ));
+        }
+    }
+    for w in widgets(sim) {
+        for it in &w.items {
+            if it.readings.is_empty() && it.actions.is_empty() {
+                q.push(format!(
+                    "workbench item {} has no readings or actions",
+                    it.id
+                ));
+            }
+        }
+    }
+    let interactive = !sim.hosts.is_empty()
+        || widgets(sim).any(|w| {
+            matches!(
+                w.kind.as_str(),
+                "query" | "form" | "actions" | "editor" | "chat" | "workbench"
+            )
+        });
+    if !interactive {
+        q.push("nothing to operate: add a terminal host or an interactive tool widget".into());
+    }
+    q
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Every simulation in every built-in demo course.
+    pub(crate) fn demo_sim_paths() -> Vec<std::path::PathBuf> {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../ui/demo");
+        let mut v = Vec::new();
+        for course in std::fs::read_dir(root).unwrap() {
+            for e in std::fs::read_dir(course.unwrap().path().join("sims")).unwrap() {
+                v.push(e.unwrap().path());
+            }
+        }
+        v.sort();
+        v
+    }
 
     fn demo() -> Simulation {
         let text = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../ui/demo/sims/infected-web-01.json"
+            "/../ui/demo/incident-response/sims/infected-web-01.json"
         ))
         .expect("demo simulation present");
         serde_json::from_str(&text).unwrap()
     }
 
     #[test]
-    fn demo_simulations_are_valid() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../ui/demo/sims");
-        let mut n = 0;
-        for e in std::fs::read_dir(dir).unwrap() {
-            let p = e.unwrap().path();
+    fn demo_simulations_are_valid_and_rich() {
+        let paths = demo_sim_paths();
+        assert!(paths.len() >= 3);
+        for p in paths {
             let sim: Simulation = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
             assert_eq!(validate(&sim), Vec::<String>::new(), "{}", p.display());
-            n += 1;
+            assert_eq!(quality(&sim), Vec::<String>::new(), "{}", p.display());
         }
-        assert!(n >= 2);
+    }
+
+    #[test]
+    fn workbench_rules_are_checked() {
+        let p = demo_sim_paths()
+            .into_iter()
+            .find(|p| p.ends_with("rcd-kitchen.json"))
+            .unwrap();
+        let mut s: Simulation = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
+        let bench = &mut s.apps[0].screens[0].widgets[0];
+        bench.items[1].actions[0].requires.push("never:set".into());
+        bench.items[1].actions[0].blocked_message.clear();
+        bench.items[4].readings[0].tool = "Oscilloscope".into();
+        bench.items[0].status = "melted".into();
+        let errs = validate(&s).join("\n");
+        assert!(errs.contains("requires flag 'never:set'"), "{errs}");
+        assert!(errs.contains("no blocked_message"), "{errs}");
+        assert!(errs.contains("tool 'Oscilloscope'"), "{errs}");
+        assert!(errs.contains("status must be one of"), "{errs}");
+        assert!(builtin_flags(&s).contains("inspected:kettle"));
     }
 
     #[test]
