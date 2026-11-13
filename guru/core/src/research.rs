@@ -16,7 +16,7 @@ use anyhow::bail;
 use anyhow::Result;
 use serde_json::Value;
 
-use crate::model::ResearchHints;
+use crate::course::ResearchHints;
 
 const API: &str = "https://api.stackexchange.com/2.3";
 const PER_TAG: usize = 15;

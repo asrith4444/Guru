@@ -1,0 +1,21 @@
+[package]
+name = "guru-app"
+description = "Guru desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "guru"
+
+[[bin]]
+name = "guru"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow.workspace = true
+guru-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }

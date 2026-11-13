@@ -1,13 +1,14 @@
-//! Bridge to the Codex CLI. Guru never talks to a model directly: it drives
-//! `codex exec` (non-interactive, structured JSON output) for planning,
-//! environment building and grading, and launches the interactive `codex` TUI
-//! as a live tutor. Authentication is Codex's own "Sign in with ChatGPT".
+//! Bridge to the Codex CLI. Guru never talks to a model directly. It drives
+//! `codex exec`, which runs non-interactively and returns structured JSON, to
+//! plan courses and generate their assets. Authentication is Codex's own
+//! "Sign in with ChatGPT".
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 
@@ -17,13 +18,12 @@ use anyhow::Result;
 use serde_json::Value;
 
 use crate::config::Config;
-use crate::ui;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sandbox {
-    /// Codex may read anything but change nothing (grading, answering).
+    /// Codex may read but change nothing (all of Guru's generation is pure output).
     ReadOnly,
-    /// Codex may write inside the course directory (lessons, labs, scripts).
+    /// Codex may write inside the working directory.
     WorkspaceWrite,
 }
 
@@ -37,25 +37,27 @@ impl Sandbox {
 }
 
 pub struct ExecRequest<'a> {
+    /// Used for scratch file names; must be filesystem-safe.
     pub label: &'a str,
     pub cwd: &'a Path,
     pub prompt: String,
     pub schema: Option<Value>,
     pub sandbox: Sandbox,
     pub web_search: bool,
-    /// Suppress progress lines (used when running in the background).
-    pub quiet: bool,
-    /// Optional images (e.g. a photo of a drawing or handwritten work).
-    pub images: Vec<PathBuf>,
+    /// Reasoning effort override for this call ("low" for quick sizing calls).
+    pub effort: Option<&'a str>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Codex {
     pub bin: PathBuf,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub web_search: bool,
 }
+
+/// Something Codex is doing right now, for progress displays.
+pub type Activity<'a> = &'a (dyn Fn(&str) + Sync);
 
 impl Codex {
     pub fn from_config(cfg: &Config) -> Self {
@@ -69,16 +71,6 @@ impl Codex {
             reasoning_effort: cfg.reasoning_effort.clone(),
             web_search: cfg.web_search,
         }
-    }
-
-    pub fn available(&self) -> bool {
-        Command::new(&self.bin)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
     }
 
     pub fn version(&self) -> Option<String> {
@@ -98,27 +90,27 @@ impl Codex {
                 }
                 (out.status.success(), msg)
             }
-            Err(e) => (false, format!("could not run codex: {e}")),
+            Err(e) => (false, format!("Codex CLI not found ({e})")),
         }
     }
 
-    /// Hand the terminal to `codex login` (Sign in with ChatGPT).
-    pub fn login(&self) -> Result<()> {
-        let status = Command::new(&self.bin)
+    /// Start `codex login` (Sign in with ChatGPT). Codex opens the browser and
+    /// prints the URL; the caller reads stderr/stdout and waits for the child.
+    pub fn spawn_login(&self) -> Result<Child> {
+        Command::new(&self.bin)
             .arg("login")
-            .status()
-            .with_context(|| format!("failed to start {}", self.bin.display()))?;
-        if !status.success() {
-            bail!("codex login did not complete");
-        }
-        Ok(())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("failed to start {}", self.bin.display()))
     }
 
-    fn common_args(&self, cmd: &mut Command, web_search: bool) {
+    fn common_args(&self, cmd: &mut Command, web_search: bool, effort: Option<&str>) {
         if let Some(m) = &self.model {
             cmd.args(["-m", m]);
         }
-        if let Some(e) = &self.reasoning_effort {
+        if let Some(e) = effort.or(self.reasoning_effort.as_deref()) {
             cmd.args(["-c", &format!("model_reasoning_effort=\"{e}\"")]);
         }
         let mode = if web_search && self.web_search {
@@ -131,7 +123,7 @@ impl Codex {
 
     /// Run one non-interactive Codex turn and return its final message.
     /// With a schema, the final message is parsed and returned as JSON.
-    pub fn exec(&self, req: ExecRequest<'_>) -> Result<Value> {
+    pub fn exec(&self, req: ExecRequest<'_>, activity: Option<Activity<'_>>) -> Result<Value> {
         let scratch = req.cwd.join(".guru");
         std::fs::create_dir_all(&scratch)?;
         let out_file = scratch.join(format!("out-{}.txt", req.label));
@@ -147,14 +139,11 @@ impl Codex {
             .arg(req.cwd)
             .arg("-o")
             .arg(&out_file);
-        self.common_args(&mut cmd, req.web_search);
+        self.common_args(&mut cmd, req.web_search, req.effort);
         if let Some(schema) = &req.schema {
             let schema_file = scratch.join(format!("schema-{}.json", req.label));
             std::fs::write(&schema_file, serde_json::to_vec_pretty(schema)?)?;
             cmd.arg("--output-schema").arg(&schema_file);
-        }
-        for img in &req.images {
-            cmd.arg("--image").arg(img);
         }
         // Prompt via stdin: no argument-length limits, nothing in `ps` output.
         cmd.arg("-");
@@ -164,7 +153,7 @@ impl Codex {
 
         let mut child = cmd.spawn().with_context(|| {
             format!(
-                "failed to start {} (is Codex installed? run `guru doctor`)",
+                "failed to start Codex at '{}'. Install it (npm i -g @openai/codex) or set its path in Settings.",
                 self.bin.display()
             )
         })?;
@@ -189,8 +178,15 @@ impl Codex {
                 let Ok(event) = serde_json::from_str::<Value>(&line) else {
                     continue;
                 };
-                if let Some(msg) = handle_event(&event, req.quiet, &mut errors) {
-                    last_agent_message = Some(msg);
+                match interpret_event(&event) {
+                    Some(EventInfo::Message(m)) => last_agent_message = Some(m),
+                    Some(EventInfo::Activity(a)) => {
+                        if let Some(cb) = activity {
+                            cb(&a);
+                        }
+                    }
+                    Some(EventInfo::Error(e)) => errors.push(e),
+                    None => {}
                 }
             }
         }
@@ -202,21 +198,14 @@ impl Codex {
             .filter(|t| !t.trim().is_empty())
             .or(last_agent_message);
         let Some(text) = text else {
-            let tail: String = stderr_text
-                .lines()
-                .rev()
-                .take(8)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join("\n");
+            let tail: Vec<&str> = stderr_text.lines().rev().take(8).collect();
+            let tail: Vec<&str> = tail.into_iter().rev().collect();
             bail!(
-                "Codex step '{}' failed (exit {}).\n{}\n{}",
+                "Codex step '{}' failed (exit {}). {} {}",
                 req.label,
                 status.code().unwrap_or(-1),
-                errors.join("\n"),
-                tail
+                errors.join(" "),
+                tail.join("\n")
             );
         };
         if req.schema.is_some() {
@@ -226,28 +215,16 @@ impl Codex {
             Ok(Value::String(text))
         }
     }
-
-    /// Launch the interactive Codex TUI as a live tutor in `cwd`.
-    pub fn interactive(&self, cwd: &Path, prompt: &str, web_search: bool) -> Result<()> {
-        let mut cmd = Command::new(&self.bin);
-        cmd.arg("-C").arg(cwd);
-        self.common_args(&mut cmd, web_search);
-        if !prompt.is_empty() {
-            cmd.arg(prompt);
-        }
-        let status = cmd
-            .status()
-            .with_context(|| format!("failed to start {}", self.bin.display()))?;
-        if !status.success() {
-            ui::warn("The tutor exited with an error.");
-        }
-        Ok(())
-    }
 }
 
-/// Print a compact progress line for interesting events; collect errors;
-/// return the text of completed agent messages.
-fn handle_event(event: &Value, quiet: bool, errors: &mut Vec<String>) -> Option<String> {
+#[derive(Debug, PartialEq)]
+enum EventInfo {
+    Message(String),
+    Activity(String),
+    Error(String),
+}
+
+fn interpret_event(event: &Value) -> Option<EventInfo> {
     let ty = event.get("type")?.as_str()?;
     match ty {
         "item.started" | "item.completed" => {
@@ -255,58 +232,40 @@ fn handle_event(event: &Value, quiet: bool, errors: &mut Vec<String>) -> Option<
             let item_ty = item.get("type")?.as_str()?;
             let started = ty == "item.started";
             match item_ty {
-                "agent_message" if !started => {
-                    return item.get("text").and_then(Value::as_str).map(String::from);
-                }
-                "command_execution" if started && !quiet => {
-                    let cmd = item.get("command").and_then(Value::as_str).unwrap_or("");
-                    ui::activity("running", cmd);
-                }
-                "file_change" if !started && !quiet => {
-                    let files: Vec<&str> = item
-                        .get("changes")
-                        .and_then(Value::as_array)
-                        .map(|c| c.iter().filter_map(|x| x.get("path")?.as_str()).collect())
-                        .unwrap_or_default();
-                    let names: Vec<String> = files
-                        .iter()
-                        .map(|p| {
-                            Path::new(p)
-                                .file_name()
-                                .map(|f| f.to_string_lossy().into_owned())
-                                .unwrap_or_default()
-                        })
-                        .collect();
-                    ui::activity("writing", &names.join(", "));
-                }
-                "web_search" if started && !quiet => {
+                "agent_message" if !started => item
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(|t| EventInfo::Message(t.to_string())),
+                "web_search" if started => {
                     let q = item.get("query").and_then(Value::as_str).unwrap_or("");
-                    ui::activity("researching", q);
+                    Some(EventInfo::Activity(format!("Researching: {q}")))
                 }
-                "error" => {
-                    if let Some(m) = item.get("message").and_then(Value::as_str) {
-                        errors.push(m.to_string());
-                    }
+                "command_execution" if started => {
+                    let c = item.get("command").and_then(Value::as_str).unwrap_or("");
+                    let c: String = c.chars().take(80).collect();
+                    Some(EventInfo::Activity(format!("Checking: {c}")))
                 }
-                _ => {}
+                "reasoning" if !started => Some(EventInfo::Activity("Thinking…".into())),
+                "error" => item
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .map(|m| EventInfo::Error(m.to_string())),
+                _ => None,
             }
         }
-        "turn.failed" => {
-            if let Some(m) = event.pointer("/error/message").and_then(Value::as_str) {
-                errors.push(m.to_string());
-            }
-        }
-        "error" => {
-            if let Some(m) = event.get("message").and_then(Value::as_str) {
-                errors.push(m.to_string());
-            }
-        }
-        _ => {}
+        "turn.failed" => event
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .map(|m| EventInfo::Error(m.to_string())),
+        "error" => event
+            .get("message")
+            .and_then(Value::as_str)
+            .map(|m| EventInfo::Error(m.to_string())),
+        _ => None,
     }
-    None
 }
 
-/// Parse JSON, tolerating a fenced code block or leading prose around it.
+/// Parse JSON, tolerating a fenced code block or prose around it.
 pub fn parse_json_lenient(text: &str) -> Result<Value> {
     if let Ok(v) = serde_json::from_str(text.trim()) {
         return Ok(v);
@@ -328,7 +287,7 @@ mod tests {
     fn lenient_json_parsing() {
         assert_eq!(parse_json_lenient("{\"a\":1}").unwrap(), json!({"a":1}));
         assert_eq!(
-            parse_json_lenient("Here you go:\n```json\n{\"a\": {\"b\": 2}}\n```").unwrap(),
+            parse_json_lenient("Here:\n```json\n{\"a\": {\"b\": 2}}\n```").unwrap(),
             json!({"a":{"b":2}})
         );
         assert!(parse_json_lenient("no json").is_err());
@@ -336,19 +295,21 @@ mod tests {
 
     #[test]
     fn events_are_interpreted() {
-        let mut errors = vec![];
-        let msg = handle_event(
-            &json!({"type":"item.completed","item":{"id":"1","type":"agent_message","text":"hi"}}),
-            true,
-            &mut errors,
+        assert_eq!(
+            interpret_event(
+                &json!({"type":"item.completed","item":{"id":"1","type":"agent_message","text":"hi"}})
+            ),
+            Some(EventInfo::Message("hi".into()))
         );
-        assert_eq!(msg.as_deref(), Some("hi"));
-        handle_event(
-            &json!({"type":"turn.failed","error":{"message":"boom"}}),
-            true,
-            &mut errors,
+        assert_eq!(
+            interpret_event(&json!({"type":"turn.failed","error":{"message":"boom"}})),
+            Some(EventInfo::Error("boom".into()))
         );
-        handle_event(&json!({"type":"error","message":"bad"}), true, &mut errors);
-        assert_eq!(errors, vec!["boom", "bad"]);
+        assert_eq!(
+            interpret_event(
+                &json!({"type":"item.started","item":{"id":"2","type":"web_search","query":"grafana panels"}})
+            ),
+            Some(EventInfo::Activity("Researching: grafana panels".into()))
+        );
     }
 }

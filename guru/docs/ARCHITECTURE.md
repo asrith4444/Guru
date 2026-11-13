@@ -1,89 +1,114 @@
 # Guru architecture
 
-Guru is a small Rust program that **orchestrates the Codex CLI**. Codex does three jobs:
-it is the AI, it is the system controller that builds practice environments on the
-learner's machine inside its sandbox, and it is the live tutor. Guru provides the
-pedagogy, the learner model, scheduling, machine awareness and the session flow.
+Guru is a desktop app (Tauri 2) with a Rust core and a framework-free web interface
+rendered by the operating system's web view. AI is used in one place, building a course,
+through the Codex CLI. Everything after that is local.
 
 ```
-                ┌──────────────────────────── guru (≈1.2 MB binary, ≈3 MB RSS idle) ───────────────────────────┐
-  learner ⇄ CLI │ learn.rs   intake → plan → pretest → calibrate      session.rs  Recall→Read→Practice→Prove→Reflect │
-                │ srs.rs     SM-2 spaced, interleaved retrieval        machine.rs  RAM/CPU/disk/tools → lab budget   │
-                │ prompts.rs the method, as instructions               schemas.rs  strict JSON output contracts      │
-                │ research.rs Stack Exchange mining (system curl)      config.rs   ~/.guru JSON store (atomic writes) │
-                └───────────────┬──────────────────────────────────────────────┬──────────────────────────────────┘
-                                │ codex exec --json --output-schema … -        │ codex -C <course> "<prompt>"
-                                ▼                                              ▼
-                     non-interactive turns                        interactive TUI tutor (AGENTS.md
-                     (plan, lesson+lab, check, grade)             = learner model + teaching rules)
-                                │
-                     Sign in with ChatGPT (codex login) · sandbox (read-only / workspace-write) · web search
+ ┌──────────────── ui/ (OS web view: WebKit / WebView2) ────────────────┐
+ │ library · new course (level bar) · course · lesson · quiz · cards    │
+ │ simulation player ── engine.js (shell, fs, processes, logs, tools)   │
+ └───────────────▲──────────────────────────────┬───────────────────────┘
+                 │ events: download, login-*    │ invoke(command)
+ ┌───────────────┴──── app/ (guru-app, Tauri) ──▼───────────────────────┐
+ │ thin command layer: courses, progress, cards, download control,      │
+ │ sign-in, optional "Ask AI" (ask_guru, ai_command)                    │
+ └───────────────────────────────┬──────────────────────────────────────┘
+ ┌──────────────── core/ (guru-core) ▼──────────────────────────────────┐
+ │ generator  plan → research → build (parallel) → validate → ready     │
+ │ sim        simulation spec + semantic validator                      │
+ │ course     package on disk, progress, mastery                        │
+ │ scope      level bar → hours        srs  spaced repetition (SM-2)    │
+ │ research   Stack Exchange API (curl)  machine  RAM/CPU → worker count│
+ │ codex      `codex exec --json --output-schema …` (Sign in with ChatGPT)│
+ └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## Course package
+
+A downloaded course is a plain folder in `~/.guru/courses/<slug>/` (or `$GURU_HOME`):
+
+| File | Contents |
+|---|---|
+| `course.json` | plan: skills, modules, simulation plans, capstone, level, hours, status |
+| `modules/<id>.json` | lesson (Markdown), key points, flashcards, quiz with explanations |
+| `sims/<id>.json` | simulations (spec below) |
+| `progress.json` | lessons read, best quiz scores, simulation results, mastery per skill |
+| `cards.json` | spaced-repetition state |
+| `research/` | Stack Exchange material with source links (CC BY-SA attribution) |
+
+## Simulation spec
+
+Defined in `core/src/sim.rs` and played by `ui/js/sim/engine.js`. It is declarative: no
+generated code ever runs.
+
+- `world`: nodes (kind, status, map position) and links.
+- `hosts`: per-node terminal with `files`, `processes`, `services` and `commands`
+  (regex → output + effects) for anything beyond the built-in shell.
+- `logs`: timestamped, levelled log streams.
+- `apps`: simulated tools made of widgets: `markdown`, `stat`, `timeseries`, `table`,
+  `logs`, `query`, `form`, `actions`, `editor`, `chat`.
+- `effects`: set flags, change node status, show a message.
+- `objectives`: `answer` (multiple choice or regex-checked free text) or `state` (flags
+  that the learner's actions must set).
+
+Built-in actions set flags automatically (`killed:<pid|name>`, `stopped:<svc>`,
+`removed:<path>`, `read:<path>`, `viewed:<stream>`, …). The validator checks that every
+state objective's flags can be produced by some built-in action or effect, that every
+referenced node and stream exists, that table rows and series lengths line up, and that
+every regex compiles. The demo simulations are also checked against the JSON Schema
+shape in `core/src/schemas.rs`, so the hand-written reference and what Codex produces
+cannot drift apart.
 
 ## The Codex contract
 
-Guru depends only on Codex's stable command-line surface, so it upgrades with Codex:
-
 | Need | Codex feature |
 |---|---|
-| AI with the learner's ChatGPT plan | `codex login` (Sign in with ChatGPT); `codex login status` |
-| Structured results | `codex exec --output-schema <file>` + `-o <file>`; strict schemas in `schemas.rs` |
-| Progress display | `codex exec --json` event stream (`item.started` command/file/web-search) |
-| Building labs safely | `--sandbox workspace-write -C <course dir>`: Codex can only write inside the course |
-| Grading without side effects | `--sandbox read-only` |
-| Current facts and versions | `-c web_search="live"` (planning, lessons, research); disabled for grading |
-| Live tutoring | interactive `codex -C <course>`; the course `AGENTS.md` is the tutor's instructions |
-| No session clutter | `--ephemeral` for one-shot turns |
+| AI on the learner's ChatGPT plan | `codex login` (Sign in with ChatGPT), `codex login status` |
+| Structured assets | `codex exec --output-schema` (strict; widgets via `anyOf`) + `-o` |
+| Fallback when a schema is rejected | the same schema embedded in the prompt, then Guru's own validation |
+| Progress display | `codex exec --json` events (web search, commands, reasoning) |
+| Safety | `--sandbox read-only`: generation only returns JSON; Codex writes no files |
+| Current facts | `-c web_search="live"` for planning and lessons |
+| No clutter | `--ephemeral` |
 
-Set `GURU_CODEX_BIN` (or `guru config codex_bin`) to use a Codex built from this repository.
+## AI budget
 
-## AI cost per hour
+| Step | Codex requests |
+|---|---|
+| Sizing a topic (level bar) | 1, low reasoning effort |
+| Downloading a course | 1 plan + 1 per module + 1 per simulation (+1 retry when validation fails) |
+| Studying | 0 |
+| Optional, user-initiated | "Ask Guru" on a lesson: 1 · "Ask AI to simulate this command": 1 |
 
-The token budget is kept small on purpose:
+A 5-hour course (7 modules, about 12 simulations) is roughly 20 requests, run 1-3 at a
+time depending on free memory, and resumable.
 
-- **1 turn** to prepare the hour (lesson, lab, cards, quiz, hints, all in one structured
-  call). It runs in the background during the Recall block, so the learner never waits for it.
-- **0..n turns** for help, only when the learner asks. Prepared hints and the automatic
-  check script cost nothing.
-- **1 turn** for the lab review (only if the check script cannot judge the work, or the
-  learner asks for feedback).
-- **1 turn** for grading the quiz and explanation together.
+## Security and safety
 
-Course creation costs 2 turns (plan; calibration plus issue bank). Spaced review, status
-and the hint ladder are fully local.
+- AI-generated content is rendered as text nodes only. The Markdown renderer builds DOM
+  elements and never uses `innerHTML`. The content security policy allows only Guru's
+  own scripts.
+- Codex runs with a read-only sandbox for every Guru request.
+- Course and asset ids are validated before they touch the filesystem; deletion is
+  restricted to course folders.
+- Links in lessons open in the system browser, and only `http(s)` links are allowed.
+- The improvised-terminal request strips objectives, hints and the debrief from the
+  context it sends, so the AI cannot leak the answers.
 
-## Learner model
+## Performance
 
-`course.json` holds the plan, the per-skill mastery estimates, misconceptions, remediation
-targets and coach notes. `Course::learner_model()` serialises it compactly and every prompt
-includes it. That is what makes every lesson, lab, hint and grade adaptive. `AGENTS.md` is
-regenerated after each hour so the interactive tutor sees the same model.
-
-## Safety model
-
-- Codex writes only inside the course directory (workspace-write sandbox) and grades
-  read-only.
-- Paths Codex returns are validated to stay inside the course directory.
-- Every script Codex writes (setup, check, teardown) runs with the learner's own permissions,
-  outside the sandbox, because setup may need the network to download packages. So each
-  script is shown and needs one-time approval tied to its exact contents: any change asks
-  again. Check and teardown scripts run with a timeout, and their output is truncated
-  before it is sent to the model.
-- Lab budgets are enforced through instructions plus the visible RAM/disk estimate the
-  learner confirms; teardown is offered at the end of every hour and `guru clean` stops
-  everything.
-- All learner data is local JSON. Nothing leaves the machine except Codex turns, and the
-  Stack Exchange API queries (topic tags only).
-
-## Resilience
-
-Progress inside an hour (`progress.json`) is saved after every step, so a closed laptop
-or Ctrl-C resumes exactly where it stopped. All writes are atomic (write + rename).
+- The app binary is about 5.5 MB (release, Linux). Measured on Linux while playing a
+  simulation, the app's total proportional memory (PSS) was about 220 MB across the
+  Guru process and WebKit's two helpers. Guru disables WebKitGTK GPU compositing by
+  default, which cut the page process from about 250 MB to about 90 MB in measurement.
+  Set `WEBKIT_DISABLE_COMPOSITING_MODE=0` to opt back in.
+- No background work unless a download is running. Downloads use a worker pool of 1-3
+  Codex processes, sized to free RAM, or the "Parallel builders" setting.
 
 ## Roadmap
 
-- Use the Codex app-server protocol for streaming lessons token-by-token.
-- Run check scripts inside `codex sandbox` instead of with plain user permissions.
-- Replace SM-2 with FSRS once there is enough review history per learner.
-- Voice roleplay for spoken languages via Codex realtime.
-- Shareable course templates: the same plan, re-calibrated for each learner.
+- Voice roleplay for spoken languages (Codex realtime).
+- FSRS scheduling once there is enough review history.
+- Shareable course packages (export/import a folder or a single `.guru` file).
+- Optional "real lab" mode that provisions a container when the machine has room.

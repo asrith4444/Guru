@@ -1,0 +1,966 @@
+{
+ "id": "grafana-alerting",
+ "title": "Build the on-call dashboard and alert in Grafana",
+ "kind": "tool",
+ "tool": "Grafana + Prometheus",
+ "minutes": 25,
+ "skill_ids": [
+  "promql",
+  "dashboards",
+  "alerting"
+ ],
+ "briefing": "Your team just installed Prometheus, but nobody can see anything yet. In this **simulated Grafana** you will:\n\n1. Connect the **Prometheus data source** (it runs at `http://prometheus:9090`).\n2. Use **Explore** to write the PromQL queries an on-call engineer needs.\n3. Create an **alert rule** that pages when the 5xx error rate stays above 5% for 5 minutes.\n\nOpen *Grafana (simulated)* in the Apps tab. Everything behaves like the real tool's workflow: Connections → Data sources, Explore, Alerting → Alert rules.",
+ "world": {
+  "nodes": [
+   {
+    "id": "api",
+    "label": "checkout-api (×2)",
+    "kind": "service",
+    "status": "degraded",
+    "detail": "Exposes /metrics",
+    "x": 20,
+    "y": 50
+   },
+   {
+    "id": "prom",
+    "label": "Prometheus",
+    "kind": "service",
+    "status": "healthy",
+    "detail": "Scrapes every 15s",
+    "x": 50,
+    "y": 50
+   },
+   {
+    "id": "graf",
+    "label": "Grafana",
+    "kind": "app",
+    "status": "healthy",
+    "detail": "Dashboards & alerting",
+    "x": 80,
+    "y": 50
+   }
+  ],
+  "links": [
+   {
+    "from": "prom",
+    "to": "api",
+    "label": "scrape /metrics"
+   },
+   {
+    "from": "graf",
+    "to": "prom",
+    "label": "PromQL"
+   }
+  ]
+ },
+ "hosts": [],
+ "logs": [
+  {
+   "id": "api",
+   "name": "checkout-api · application log",
+   "node_id": "api",
+   "lines": [
+    {
+     "ts": "03:00:01",
+     "level": "info",
+     "message": "GET /api/cart 200 41ms"
+    },
+    {
+     "ts": "03:00:03",
+     "level": "info",
+     "message": "GET /api/products 200 22ms"
+    },
+    {
+     "ts": "03:02:11",
+     "level": "warn",
+     "message": "payment-provider slow response 1800ms"
+    },
+    {
+     "ts": "03:04:40",
+     "level": "error",
+     "message": "POST /api/checkout 503 upstream payment-provider unavailable"
+    },
+    {
+     "ts": "03:04:41",
+     "level": "error",
+     "message": "POST /api/checkout 503 upstream payment-provider unavailable"
+    },
+    {
+     "ts": "03:05:02",
+     "level": "error",
+     "message": "circuit breaker OPEN for payment-provider"
+    },
+    {
+     "ts": "03:05:30",
+     "level": "info",
+     "message": "GET /api/cart 200 39ms"
+    }
+   ]
+  }
+ ],
+ "apps": [
+  {
+   "id": "grafana",
+   "name": "Grafana (simulated)",
+   "node_id": "graf",
+   "accent": "#f46800",
+   "screens": [
+    {
+     "id": "datasources",
+     "title": "Connections › Data sources",
+     "widgets": [
+      {
+       "type": "markdown",
+       "id": "md1",
+       "title": "Add data source",
+       "text": "Grafana needs a **data source** before any panel can show data. Choose the type and the URL Grafana's *server* uses to reach it (not your browser)."
+      },
+      {
+       "type": "form",
+       "id": "ds",
+       "title": "Prometheus settings",
+       "fields": [
+        {
+         "id": "type",
+         "label": "Type",
+         "kind": "select",
+         "options": [
+          "Prometheus",
+          "Loki",
+          "PostgreSQL",
+          "Elasticsearch"
+         ],
+         "value": "Prometheus"
+        },
+        {
+         "id": "url",
+         "label": "Prometheus server URL",
+         "kind": "text",
+         "options": [],
+         "value": "http://localhost:9090"
+        },
+        {
+         "id": "scrape",
+         "label": "Scrape interval",
+         "kind": "text",
+         "options": [],
+         "value": "15s"
+        }
+       ],
+       "submit_label": "Save & test",
+       "rules": [
+        {
+         "conditions": [
+          {
+           "field": "type",
+           "pattern": "^Prometheus$"
+          },
+          {
+           "field": "url",
+           "pattern": "^https?://prometheus:9090/?$"
+          }
+         ],
+         "ok": true,
+         "message": "✔ Successfully queried the Prometheus API.",
+         "effects": {
+          "set_flags": [
+           "datasource_ok"
+          ],
+          "node_status": [],
+          "message": "Data source connected."
+         }
+        },
+        {
+         "conditions": [
+          {
+           "field": "url",
+           "pattern": "localhost|127\\.0\\.0\\.1"
+          }
+         ],
+         "ok": false,
+         "message": "✖ Post \"http://localhost:9090/api/v1/query\": dial tcp 127.0.0.1:9090: connect: connection refused — localhost here means the Grafana container itself, not Prometheus.",
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        }
+       ],
+       "fallback": "✖ Error reading Prometheus: bad_response: the server did not respond with a Prometheus API. Check type and URL."
+      }
+     ]
+    },
+    {
+     "id": "explore",
+     "title": "Explore",
+     "widgets": [
+      {
+       "type": "markdown",
+       "id": "md2",
+       "title": "Metrics available",
+       "text": "`http_requests_total{job, instance, route, status}` (counter) · `http_request_duration_seconds_bucket{le, route}` (histogram) · `node_cpu_seconds_total{mode, instance}` (counter) · `up`"
+      },
+      {
+       "type": "query",
+       "id": "q",
+       "title": "Query (PromQL)",
+       "language": "PromQL",
+       "placeholder": "e.g. up",
+       "responses": [
+        {
+         "pattern": "^up$",
+         "result": "table",
+         "text": "",
+         "columns": [
+          "instance",
+          "job",
+          "value"
+         ],
+         "rows": [
+          [
+           "api-a:8080",
+           "checkout-api",
+           "1"
+          ],
+          [
+           "api-b:8080",
+           "checkout-api",
+           "1"
+          ],
+          [
+           "prometheus:9090",
+           "prometheus",
+           "1"
+          ]
+         ],
+         "labels": [],
+         "series": [],
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        },
+        {
+         "pattern": "^http_requests_total$",
+         "result": "text",
+         "text": "Raw counter values only ever go up (e.g. 1 830 442). A counter is useless on its own: wrap it in rate() to get requests per second.",
+         "columns": [],
+         "rows": [],
+         "labels": [],
+         "series": [],
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        },
+        {
+         "pattern": "^sum\\s*(by\\s*\\(\\s*\\w+\\s*\\)\\s*)?\\(\\s*rate\\(\\s*http_requests_total(\\{[^}]*\\})?\\[\\s*\\d+[sm]\\s*\\]\\s*\\)\\s*\\)(\\s*by\\s*\\(\\s*\\w+\\s*\\))?$",
+         "result": "timeseries",
+         "text": "",
+         "columns": [],
+         "rows": [],
+         "labels": [
+          "02:40",
+          "02:42",
+          "02:44",
+          "02:46",
+          "02:48",
+          "02:50",
+          "02:52",
+          "02:54",
+          "02:56",
+          "02:58",
+          "03:00",
+          "03:02",
+          "03:04",
+          "03:06",
+          "03:08",
+          "03:10",
+          "03:12",
+          "03:14",
+          "03:16",
+          "03:18",
+          "03:20",
+          "03:22",
+          "03:24",
+          "03:26",
+          "03:28",
+          "03:30",
+          "03:32",
+          "03:34",
+          "03:36",
+          "03:38"
+         ],
+         "series": [
+          {
+           "name": "req/s",
+           "points": [
+            108.9,
+            107.1,
+            127.2,
+            112.7,
+            109.9,
+            107.5,
+            130.2,
+            131.1,
+            125.1,
+            113.5,
+            112.3,
+            113.8,
+            118.8,
+            109.7,
+            118.4,
+            112.9,
+            133.9,
+            134.2,
+            121.4,
+            112.3,
+            134.0,
+            114.3,
+            115.7,
+            105.0,
+            116.4,
+            119.2,
+            120.1,
+            111.0,
+            120.1,
+            105.1
+           ]
+          }
+         ],
+         "effects": {
+          "set_flags": [
+           "query:rate"
+          ],
+          "node_status": [],
+          "message": "Nice: rate() over a counter → requests per second."
+         }
+        },
+        {
+         "pattern": "rate\\(\\s*http_requests_total\\{[^}]*status\\s*=~\\s*\\\"5\\.\\.\\\"[^}]*\\}\\[\\s*\\d+[sm]\\s*\\]\\s*\\)\\s*\\)?\\s*/\\s*sum\\s*(by\\s*\\(\\s*\\w+\\s*\\)\\s*)?\\(\\s*rate\\(\\s*http_requests_total(\\{[^}]*\\})?\\[\\s*\\d+[sm]\\s*\\]",
+         "result": "timeseries",
+         "text": "",
+         "columns": [],
+         "rows": [],
+         "labels": [
+          "02:40",
+          "02:42",
+          "02:44",
+          "02:46",
+          "02:48",
+          "02:50",
+          "02:52",
+          "02:54",
+          "02:56",
+          "02:58",
+          "03:00",
+          "03:02",
+          "03:04",
+          "03:06",
+          "03:08",
+          "03:10",
+          "03:12",
+          "03:14",
+          "03:16",
+          "03:18",
+          "03:20",
+          "03:22",
+          "03:24",
+          "03:26",
+          "03:28",
+          "03:30",
+          "03:32",
+          "03:34",
+          "03:36",
+          "03:38"
+         ],
+         "series": [
+          {
+           "name": "5xx ratio %",
+           "points": [
+            0.3,
+            0.2,
+            0.3,
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0.5,
+            0.4,
+            0.6,
+            0.5,
+            0.5,
+            0.6,
+            0.3,
+            0.3,
+            0.7,
+            0.2,
+            0.5,
+            0.5,
+            0.1,
+            0.6,
+            0.6,
+            6.8,
+            7.0,
+            7.1,
+            5.8,
+            6.5,
+            6.5,
+            7.2,
+            7.1
+           ]
+          }
+         ],
+         "effects": {
+          "set_flags": [
+           "query:error_ratio"
+          ],
+          "node_status": [],
+          "message": "That's the error ratio: 5xx rate ÷ total rate. It crosses 5% at 03:04."
+         }
+        },
+        {
+         "pattern": "^rate\\(\\s*http_requests_total\\[\\s*\\d+[sm]\\s*\\]\\s*\\)$",
+         "result": "timeseries",
+         "text": "One line per label combination. Use sum by (…) to aggregate.",
+         "columns": [],
+         "rows": [],
+         "labels": [
+          "02:40",
+          "02:42",
+          "02:44",
+          "02:46",
+          "02:48",
+          "02:50",
+          "02:52",
+          "02:54",
+          "02:56",
+          "02:58",
+          "03:00",
+          "03:02",
+          "03:04",
+          "03:06",
+          "03:08",
+          "03:10",
+          "03:12",
+          "03:14",
+          "03:16",
+          "03:18",
+          "03:20",
+          "03:22",
+          "03:24",
+          "03:26",
+          "03:28",
+          "03:30",
+          "03:32",
+          "03:34",
+          "03:36",
+          "03:38"
+         ],
+         "series": [
+          {
+           "name": "api-a /api/cart 200",
+           "points": [
+            39.6,
+            43.2,
+            44.7,
+            39.5,
+            37.7,
+            37.1,
+            44.5,
+            37.1,
+            40.8,
+            36.4,
+            40.2,
+            44.5,
+            36.3,
+            43.2,
+            40.1,
+            43.9,
+            42.0,
+            37.3,
+            44.0,
+            39.9,
+            35.2,
+            35.0,
+            39.9,
+            39.5,
+            38.0,
+            36.4,
+            38.4,
+            38.2,
+            43.4,
+            35.0
+           ]
+          },
+          {
+           "name": "api-b /api/cart 200",
+           "points": [
+            40.5,
+            41.4,
+            34.2,
+            42.3,
+            40.1,
+            42.0,
+            35.9,
+            36.7,
+            36.9,
+            43.0,
+            38.9,
+            36.6,
+            37.3,
+            35.8,
+            33.5,
+            34.0,
+            41.3,
+            35.9,
+            42.4,
+            35.5,
+            35.7,
+            38.1,
+            34.9,
+            36.7,
+            42.6,
+            41.8,
+            41.1,
+            39.3,
+            42.1,
+            42.4
+           ]
+          },
+          {
+           "name": "api-a /api/checkout 503",
+           "points": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            6.1,
+            6.4,
+            5.1,
+            6.5,
+            5.9,
+            6.5,
+            6.3,
+            5.6
+           ]
+          }
+         ],
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        },
+        {
+         "pattern": "node_cpu_seconds_total\\{[^}]*mode\\s*=\\s*\\\"idle\\\"[^}]*\\}",
+         "result": "timeseries",
+         "text": "",
+         "columns": [],
+         "rows": [],
+         "labels": [
+          "02:40",
+          "02:42",
+          "02:44",
+          "02:46",
+          "02:48",
+          "02:50",
+          "02:52",
+          "02:54",
+          "02:56",
+          "02:58",
+          "03:00",
+          "03:02",
+          "03:04",
+          "03:06",
+          "03:08",
+          "03:10",
+          "03:12",
+          "03:14",
+          "03:16",
+          "03:18",
+          "03:20",
+          "03:22",
+          "03:24",
+          "03:26",
+          "03:28",
+          "03:30",
+          "03:32",
+          "03:34",
+          "03:36",
+          "03:38"
+         ],
+         "series": [
+          {
+           "name": "api-a:9100",
+           "points": [
+            38.9,
+            36.0,
+            39.7,
+            37.2,
+            37.3,
+            31.8,
+            29.4,
+            30.6,
+            33.3,
+            30.3,
+            39.0,
+            35.7,
+            36.5,
+            36.5,
+            37.2,
+            34.9,
+            29.0,
+            38.6,
+            38.0,
+            35.0,
+            35.4,
+            36.9,
+            29.8,
+            37.8,
+            32.0,
+            29.9,
+            32.2,
+            37.8,
+            31.5,
+            37.9
+           ]
+          },
+          {
+           "name": "api-b:9100",
+           "points": [
+            85.6,
+            77.9,
+            76.1,
+            77.7,
+            80.9,
+            82.3,
+            79.9,
+            80.3,
+            71.2,
+            72.4,
+            74.1,
+            81.9,
+            74.9,
+            79.1,
+            70.2,
+            71.0,
+            74.3,
+            80.8,
+            81.1,
+            80.8,
+            74.7,
+            78.3,
+            77.4,
+            77.5,
+            71.9,
+            84.3,
+            73.2,
+            85.7,
+            85.0,
+            70.3
+           ]
+          }
+         ],
+         "effects": {
+          "set_flags": [
+           "query:cpu"
+          ],
+          "node_status": [],
+          "message": "CPU busy % per instance: api-b is running much hotter."
+         }
+        },
+        {
+         "pattern": "histogram_quantile\\(\\s*0?\\.95\\s*,",
+         "result": "table",
+         "text": "",
+         "columns": [
+          "route",
+          "p95 (s)"
+         ],
+         "rows": [
+          [
+           "/api/checkout",
+           "1.84"
+          ],
+          [
+           "/api/cart",
+           "0.12"
+          ],
+          [
+           "/api/products",
+           "0.07"
+          ]
+         ],
+         "labels": [],
+         "series": [],
+         "effects": {
+          "set_flags": [
+           "query:p95"
+          ],
+          "node_status": [],
+          "message": "p95 from a histogram: histogram_quantile over rate() of the _bucket series, summed by le."
+         }
+        },
+        {
+         "pattern": "^\\s*rate\\(\\s*http_requests_total\\s*\\)\\s*$",
+         "result": "error",
+         "text": "bad_data: 1:6: parse error: expected type range vector in call to function \"rate\", got instant vector — add a range, e.g. [5m]",
+         "columns": [],
+         "rows": [],
+         "labels": [],
+         "series": [],
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        }
+       ],
+       "fallback": "No data. Check the metric name and labels. Tip: counters need rate(…[5m]); aggregate with sum by (label)."
+      }
+     ]
+    },
+    {
+     "id": "alerting",
+     "title": "Alerting › Alert rules › New",
+     "widgets": [
+      {
+       "type": "markdown",
+       "id": "md3",
+       "title": "Alert rule",
+       "text": "A rule = **query** + **condition** + **pending period** (`for`). The pending period stops one bad scrape from waking someone up."
+      },
+      {
+       "type": "form",
+       "id": "alert",
+       "title": "New alert rule",
+       "fields": [
+        {
+         "id": "name",
+         "label": "Rule name",
+         "kind": "text",
+         "options": [],
+         "value": ""
+        },
+        {
+         "id": "query",
+         "label": "Query (PromQL)",
+         "kind": "textarea",
+         "options": [],
+         "value": ""
+        },
+        {
+         "id": "op",
+         "label": "Condition",
+         "kind": "select",
+         "options": [
+          "IS ABOVE",
+          "IS BELOW"
+         ],
+         "value": "IS ABOVE"
+        },
+        {
+         "id": "threshold",
+         "label": "Threshold",
+         "kind": "number",
+         "options": [],
+         "value": ""
+        },
+        {
+         "id": "for",
+         "label": "Pending period",
+         "kind": "select",
+         "options": [
+          "0s",
+          "1m",
+          "5m",
+          "15m"
+         ],
+         "value": "0s"
+        },
+        {
+         "id": "severity",
+         "label": "Label severity",
+         "kind": "select",
+         "options": [
+          "info",
+          "warning",
+          "critical"
+         ],
+         "value": "warning"
+        }
+       ],
+       "submit_label": "Save rule",
+       "rules": [
+        {
+         "conditions": [
+          {
+           "field": "query",
+           "pattern": "status\\s*=~\\s*\"5\\.\\.\".*/"
+          },
+          {
+           "field": "op",
+           "pattern": "ABOVE"
+          },
+          {
+           "field": "threshold",
+           "pattern": "^(0?\\.05|5)$"
+          },
+          {
+           "field": "for",
+           "pattern": "^5m$"
+          }
+         ],
+         "ok": true,
+         "message": "✔ Rule saved. State: Pending → Firing (error ratio 6.4% for 5m).",
+         "effects": {
+          "set_flags": [
+           "alert_created"
+          ],
+          "node_status": [
+           {
+            "node_id": "api",
+            "status": "degraded"
+           }
+          ],
+          "message": "Alert 'High 5xx ratio' is FIRING."
+         }
+        },
+        {
+         "conditions": [
+          {
+           "field": "for",
+           "pattern": "^0s$"
+          }
+         ],
+         "ok": false,
+         "message": "✖ Saved, but with a 0s pending period this would page on every brief spike. On-call engineers will hate you. Use 5m.",
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        },
+        {
+         "conditions": [
+          {
+           "field": "query",
+           "pattern": "^\\s*sum\\s*\\(\\s*rate\\(\\s*http_requests_total(\\{\\})?\\[[^\\]]+\\]\\s*\\)\\s*\\)\\s*$"
+          }
+         ],
+         "ok": false,
+         "message": "✖ That query is total traffic, not errors. Alert on the 5xx *ratio* (errors ÷ all requests).",
+         "effects": {
+          "set_flags": [],
+          "node_status": [],
+          "message": ""
+         }
+        }
+       ],
+       "fallback": "✖ The rule doesn't match the requirement: 5xx ratio above 5% (0.05) for 5m. Check the query, threshold and pending period."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "objectives": [
+  {
+   "id": "g1",
+   "text": "Connect Prometheus as a data source",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "datasource_ok"
+   ],
+   "explanation": "Grafana's server reaches Prometheus by its service name: http://prometheus:9090. 'localhost' would point at Grafana itself."
+  },
+  {
+   "id": "g2",
+   "text": "Chart total request throughput",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "query:rate"
+   ],
+   "explanation": "sum(rate(http_requests_total[5m])). Counters only increase; rate() turns them into per-second values."
+  },
+  {
+   "id": "g3",
+   "text": "Chart the 5xx error ratio",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "query:error_ratio"
+   ],
+   "explanation": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))"
+  },
+  {
+   "id": "g4",
+   "text": "Find the slowest route",
+   "kind": "answer",
+   "question": "Which route has the worst p95 latency?",
+   "options": [
+    "/api/cart",
+    "/api/products",
+    "/api/checkout",
+    "/metrics"
+   ],
+   "correct": [
+    2
+   ],
+   "accept": [],
+   "flags": [],
+   "explanation": "histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m]))) shows /api/checkout at 1.84 s."
+  },
+  {
+   "id": "g5",
+   "text": "Create an alert: 5xx ratio > 5% for 5 minutes",
+   "kind": "state",
+   "question": "",
+   "options": [],
+   "correct": [],
+   "accept": [],
+   "flags": [
+    "alert_created"
+   ],
+   "explanation": "Alert on symptoms users feel (error ratio), with a pending period so it fires on sustained problems only."
+  }
+ ],
+ "hints": [
+  "Start in Connections › Data sources. Which hostname does Grafana use to reach Prometheus?",
+  "In Explore, counters need rate(metric[5m]); wrap in sum(...) to aggregate.",
+  "Error ratio: sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) — then alert IS ABOVE 0.05 for 5m."
+ ],
+ "debrief": "### What you practised\n- **Data sources**: Grafana queries from its server, so URLs must resolve *there*.\n- **PromQL fundamentals**: `rate()` on counters, `sum by (label)`, ratios, and `histogram_quantile` for latency percentiles.\n- **Alerting**: alert on user-facing symptoms (error ratio, latency), with a pending period to avoid flapping pages.\n\n### On the real tool\nThe same steps in Grafana 10/11: *Connections → Data sources → Prometheus*, *Explore*, and *Alerting → Alert rules → New alert rule*. The PromQL is identical."
+}

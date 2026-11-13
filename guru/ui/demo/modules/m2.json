@@ -1,0 +1,121 @@
+{
+ "id": "m2",
+ "title": "Monitoring with Grafana and PromQL",
+ "lesson": "## Why this matters\nWithout metrics you find out about outages from customers. With the right queries and one good alert, you find out first.\n\n## The mental model\n```\napp /metrics ──scrape──► Prometheus (stores time series) ◄──PromQL── Grafana (panels, alerts)\n```\nGrafana stores no metrics. It asks a **data source** with a **query** and draws the answer.\n\n## Worked example\n1. *Connections → Data sources → Prometheus*, URL `http://prometheus:9090`.\n   > Pause and predict: why would `http://localhost:9090` fail when Grafana runs in a container?\n2. *Explore*: `http_requests_total` is a **counter** (it only goes up). `rate(http_requests_total[5m])` gives requests/second; `sum(...)` adds the series up.\n3. Error ratio: `sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))`.\n4. Latency p95: `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))`.\n5. *Alerting → New alert rule*: the error ratio, `IS ABOVE 0.05`, pending period `5m`.\n\n## The 20% you will use constantly\n| Need | PromQL |\n|---|---|\n| Is it up? | `up` |\n| Throughput | `sum(rate(http_requests_total[5m]))` |\n| Per label | `sum by (route) (rate(...[5m]))` |\n| Error ratio | `errors / total` (both as rates) |\n| Percentile | `histogram_quantile(0.95, sum by (le) (rate(..._bucket[5m])))` |\n| CPU busy % | `100 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100` |\n\n## How it breaks\n- **\"connection refused\" on the data source**: localhost inside a container is the container itself. Use the service name.\n- **Graph only goes up**: you plotted a raw counter. Wrap it in `rate()`.\n- **\"expected type range vector\"**: `rate()` needs a range like `[5m]`.\n- **Alert flaps all night**: pending period of 0s. Use `for: 5m`.\n\n## Don't confuse it with\n`rate()` (per-second average over the window, for graphs and alerts) vs `increase()` (total growth over the window, for \"how many in the last hour\").\n\n## Cheat sheet\n- Counters: always `rate(x[5m])`, then aggregate\n- Alerts: symptoms (errors, latency) + pending period + severity label\n",
+ "key_points": [
+  "Grafana queries data sources; it stores no metrics",
+  "Counters need rate(x[5m]) before they mean anything",
+  "Error ratio = rate of 5xx ÷ rate of all requests",
+  "histogram_quantile over _bucket rates gives percentiles",
+  "Alerts: symptoms + pending period"
+ ],
+ "cards": [
+  {
+   "skill_id": "promql",
+   "front": "Turn the counter http_requests_total into requests per second",
+   "back": "rate(http_requests_total[5m]) (sum(...) to aggregate)"
+  },
+  {
+   "skill_id": "promql",
+   "front": "PromQL for p95 latency from a histogram",
+   "back": "histogram_quantile(0.95, sum by (le) (rate(x_bucket[5m])))"
+  },
+  {
+   "skill_id": "dashboards",
+   "front": "Why does http://localhost:9090 fail as a data source in containers?",
+   "back": "localhost is the Grafana container itself; use the service name"
+  },
+  {
+   "skill_id": "alerting",
+   "front": "What does an alert's pending period (for) prevent?",
+   "back": "Paging on brief spikes; it must stay true for the whole period"
+  },
+  {
+   "skill_id": "triage",
+   "front": "First command when a host's CPU alert fires?",
+   "back": "top / ps aux --sort=-%cpu"
+  }
+ ],
+ "quiz": [
+  {
+   "id": "m2q1",
+   "kind": "single",
+   "prompt": "Your panel of http_requests_total only ever goes up. Fix?",
+   "options": [
+    "Use increase() with no range",
+    "Wrap it in rate(...[5m])",
+    "Switch to a bar chart",
+    "Set min to 0"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "Counters are cumulative; rate() gives per-second change.",
+   "skill_id": "promql"
+  },
+  {
+   "id": "m2q2",
+   "kind": "text",
+   "prompt": "Write the PromQL function that turns histogram buckets into a percentile.",
+   "options": [],
+   "correct": [],
+   "accept": [
+    "histogram_quantile"
+   ],
+   "explanation": "histogram_quantile(φ, sum by (le) (rate(..._bucket[5m])))",
+   "skill_id": "promql"
+  },
+  {
+   "id": "m2q3",
+   "kind": "single",
+   "prompt": "Best alert for an online shop's checkout?",
+   "options": [
+    "CPU > 80% for 0s",
+    "5xx ratio > 5% for 5m",
+    "Any error log line",
+    "Disk > 50%"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "Alert on symptoms users feel, sustained over a pending period.",
+   "skill_id": "alerting"
+  },
+  {
+   "id": "m2q4",
+   "kind": "single",
+   "prompt": "Error: 'expected type range vector in call to function rate'. Why?",
+   "options": [
+    "Wrong metric name",
+    "Missing [5m] range",
+    "Grafana is offline",
+    "Label typo"
+   ],
+   "correct": [
+    1
+   ],
+   "accept": [],
+   "explanation": "rate() needs a range vector like metric[5m].",
+   "skill_id": "promql"
+  },
+  {
+   "id": "m2q5",
+   "kind": "single",
+   "prompt": "(Mixed) Which command reveals who a suspicious process is talking to?",
+   "options": [
+    "ss -tnp",
+    "df -h",
+    "uptime",
+    "free -m"
+   ],
+   "correct": [
+    0
+   ],
+   "accept": [],
+   "explanation": "ss -tnp shows TCP sockets with PIDs.",
+   "skill_id": "triage"
+  }
+ ]
+}

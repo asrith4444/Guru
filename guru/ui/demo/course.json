@@ -1,0 +1,128 @@
+{
+ "format": 1,
+ "slug": "demo-incident-response",
+ "title": "Linux Incident Response & Monitoring (demo)",
+ "topic": "Linux incident response and monitoring",
+ "goal": "Handle a production incident from alert to fix",
+ "level": 60,
+ "level_label": "Intermediate",
+ "hours": 1.5,
+ "summary": "A built-in sample that shows how Guru courses work: two short lessons and two simulations, an infected server and a simulated Grafana. No AI and no installs needed.",
+ "target_performance": "Triage and contain a compromised Linux host from symptoms and logs, and build the Grafana queries and alert that would have caught it.",
+ "out_of_scope": [
+  "Forensic imaging",
+  "Kubernetes",
+  "Log shipping pipelines"
+ ],
+ "skills": [
+  {
+   "id": "triage",
+   "name": "Process & network triage",
+   "why": "Find what is wrong in minutes",
+   "weight": 9
+  },
+  {
+   "id": "log_analysis",
+   "name": "Log analysis",
+   "why": "Logs tell you how it happened",
+   "weight": 8
+  },
+  {
+   "id": "containment",
+   "name": "Containment",
+   "why": "Stop the bleeding without destroying evidence",
+   "weight": 8
+  },
+  {
+   "id": "promql",
+   "name": "PromQL",
+   "why": "Ask your metrics the right questions",
+   "weight": 8
+  },
+  {
+   "id": "dashboards",
+   "name": "Dashboards & data sources",
+   "why": "See the system at a glance",
+   "weight": 6
+  },
+  {
+   "id": "alerting",
+   "name": "Alerting",
+   "why": "Be paged for what matters, only",
+   "weight": 7
+  }
+ ],
+ "modules": [
+  {
+   "id": "m1",
+   "title": "Triage a compromised Linux server",
+   "minutes": 45,
+   "summary": "From a CPU alert to root cause and containment using ps/top, ss, logs and cron.",
+   "objectives": [
+    "Find the offending process and its binary",
+    "Trace the entry point in auth logs",
+    "Contain: kill, remove persistence, block"
+   ],
+   "skill_ids": [
+    "triage",
+    "log_analysis",
+    "containment"
+   ],
+   "sims": [
+    {
+     "id": "infected-web-01",
+     "title": "3 a.m. page: web-01 is burning CPU",
+     "kind": "incident",
+     "tool": "Linux server, Grafana",
+     "premise": "A crypto miner after an SSH brute force"
+    }
+   ]
+  },
+  {
+   "id": "m2",
+   "title": "Monitoring with Grafana and PromQL",
+   "minutes": 45,
+   "summary": "Data sources, the PromQL you will use daily, and alerts that only page for real problems.",
+   "objectives": [
+    "Connect Prometheus",
+    "Write rate/sum/ratio/quantile queries",
+    "Create a symptom-based alert rule"
+   ],
+   "skill_ids": [
+    "promql",
+    "dashboards",
+    "alerting"
+   ],
+   "sims": [
+    {
+     "id": "grafana-alerting",
+     "title": "Build the on-call dashboard and alert in Grafana",
+     "kind": "tool",
+     "tool": "Grafana + Prometheus",
+     "premise": "Fresh Prometheus, no dashboards, error spike tonight"
+    }
+   ]
+  }
+ ],
+ "capstone": {
+  "id": "",
+  "title": "",
+  "kind": "",
+  "tool": "",
+  "premise": ""
+ },
+ "research": {
+  "stackexchange_site": "serverfault",
+  "tags": [
+   "linux",
+   "security"
+  ],
+  "queries": [
+   "high cpu unknown process"
+  ]
+ },
+ "status": "ready",
+ "status_detail": "",
+ "created_unix": 0,
+ "generator": "hand-written demo"
+}

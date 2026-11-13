@@ -1,7 +1,8 @@
-> **Guru** — this repository also contains [Guru](guru/README.md), a reading-first,
-> practice-driven learning coach that runs on top of the Codex CLI: learn any skill to
-> working competence in about seven focused hours. See [guru/README.md](guru/README.md)
-> and [the method](guru/docs/METHOD.md).
+> **Guru**: this repository also contains [Guru](guru/README.md), a desktop learning app
+> built on top of the Codex CLI. Pick a topic and a level, download an AI-built course, and
+> learn by practising in simulations of the real tools (an infected server, Grafana,
+> kubectl, a conversation) with no installs and no AI needed while studying. See
+> [guru/README.md](guru/README.md) and [the method](guru/docs/METHOD.md).
 
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">

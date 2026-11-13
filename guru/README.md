@@ -1,135 +1,137 @@
 # Guru
 
-**Learn any skill to working competence in about seven focused hours.** Read, practice,
-recall: one hour a day for a week. No videos, and no roadmap that loses you halfway.
+**Learn any skill in hours, not weeks, by practising on simulations of the real thing.**
 
-Guru runs on top of the [Codex CLI](../README.md). Codex is the AI (through your
-ChatGPT sign-in), the system controller that builds practice environments on your machine,
-and your live tutor. Guru brings the learning science, your learner model, the schedule,
-and respect for your hardware.
-
-```
-$ guru learn "Spring Boot"
-What do you want to be able to DO after this course? › build and ship REST APIs at work
-What do you already know that is related?            › Java 17, some Express.js
-✓ Machine: 8 CPU threads, 9800 MB RAM free → lab budget 4900 MB RAM, 10240 MB disk (Large tier, containers ok).
-Deconstructing the skill…
-━━ Spring Boot: Production REST APIs in 7 Hours
-Target: build, test and containerise a CRUD REST API with validation and JPA, and diagnose
-        the 10 most common startup/configuration failures
-  Hour 1 Auto-configuration, starters and your first endpoint
-  …
-▶ Pretest · ~5 min
-…
-✓ Problem bank: 22 real-world issues.
-```
-
-## How a week looks
+Guru is a desktop app. You tell it what you want to learn and drag a bar to how far you
+want to get, from beginner through intermediate to advanced. It suggests how many hours
+that takes, then you click **Download course**. AI builds the whole course once: tight
+reading-first lessons, quizzes, flashcards, and **interactive simulations** of the tools
+and situations you would face at work. Then you study it like a downloaded video course,
+except there are no videos, no installs, no tool accounts, and no AI needed from that
+point on.
 
 ```
-guru learn "<topic>"   # once (~10 min): goal → target performance → pretest → calibrated plan + real-world issue bank
-guru next              # each day: one 60-minute session (resumable)
-guru review            # any time: 5 minutes of spaced recall, fully offline
-guru status            # mastery per skill, calibration, what's being repaired
-guru report            # after hour 7: honest report + the next 7-hour plan
+ ┌ Guru ───────────────────────────────────────────────────────────────────────────────┐
+ │  What do you want to learn?   [ DevOps                                        ]      │
+ │                                                                                      │
+ │  Intermediate                                                       −   5 h   +      │
+ │  Work independently on typical real-world tasks and fix the common failures.         │
+ │  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━○──────────────────────────          │
+ │  Beginner                     Intermediate                         Advanced          │
+ │  7 modules · about 12 simulations · e.g. 1 hour a day for 5 days                     │
+ │  Simulated inside Guru: Linux terminal · Grafana · CI/CD pipeline                    │
+ │                                                                                      │
+ │  [ ⬇ Download course ]                                                                │
+ └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Each session is the **Guru Loop**:
+## Simulations instead of installs
 
-| Block | | |
-|---|---|---|
-| Recall | 5 min | spaced, interleaved flashcards from earlier hours (Codex prepares today's lesson and lab in the background meanwhile) |
-| Read | 15 min | predict first, then a tight lesson: mental model, worked example, the 20% that matters, how it breaks (with real Stack Overflow cases), cheat sheet |
-| Practice | 25 min | a lab sized to your machine: completion task → independent task → break-fix of a real-world failure → capstone slice |
-| Prove | 10 min | lab check, exit quiz with confidence ratings, explain-it-simply |
-| Reflect | 5 min | scores, calibration, mastery gate, cleanup, next |
+Many people never practise because they can't: the tool is paid, needs an account, needs
+a cluster, or their laptop can't run it. Guru closes that gap. Each simulation is a
+playable world, written by AI when you download the course and played back offline by
+Guru's built-in engine:
 
-The research behind each block is in [docs/METHOD.md](docs/METHOD.md).
+- **A visual system map.** Servers, databases, load balancers and services, each with a
+  live status. A compromised host pulses red. Click a machine to work on it.
+- **Terminals** with a real-feeling shell: files, processes and services, plus `ls`,
+  `cat`, `grep`, `awk`, `sort | uniq -c`, `ps`, `top`, `kill`, `systemctl`, `journalctl`,
+  `rm`, pipes, redirection, history and tab completion. Tool-specific commands such as
+  `ss -tnp`, `iptables`, `kubectl`, `docker` or `crontab` are scripted per scenario.
+- **Log explorer** with search, regex and level filters.
+- **Simulated tools.** Dashboards with live-looking charts, query editors (PromQL, SQL,
+  LogQL…) that answer real queries and return real error messages, configuration forms,
+  file editors with checks, and chat counterparts for interviews, negotiations or
+  language practice. Grafana, Kubernetes, Jenkins, a SQL console or a Spanish waiter are
+  all recreated this way.
+- **Objectives** that check what you found (multiple choice or free text) and what you
+  did (process killed, persistence removed, alert rule created). Graduated hints and a
+  debrief explain how a professional would handle it.
 
-## Not only code
+When you type something a scenario did not anticipate, you can optionally press **✦ Ask
+AI to simulate this command**. That is one Codex request; nothing else in a simulation
+uses AI.
 
-The planner chooses the practice arena that fits the topic:
+The built-in demo course (**Try the demo course**, no AI or sign-in needed) contains two
+full simulations: *3 a.m. page: web-01 is burning CPU* (a crypto-miner incident after an
+SSH brute force) and *Build the on-call dashboard and alert in Grafana* (data source,
+PromQL, alert rule).
 
-- **Spring Boot, Rust, React…** → `code_lab`: a real project with TODOs and automated checks.
-- **DevOps, Kubernetes, databases, networking** → `ops_lab`: broken systems with real faults,
-  diagnosed from logs. Simulated when your machine is too small to run them.
-- **Spanish, Japanese, negotiation, interviews** → `roleplay`: live scenarios with the tutor
-  as your counterpart, corrected after every turn.
-- **Statistics, physics, finance** → `problem_set`. **Guitar, drawing, typing** → `drill_protocol`.
-  **Management, law, medicine** → `case_study`.
+## How a course is built (the only AI-heavy step)
 
-## Practice commands (during the session)
+Guru runs on top of the [Codex CLI](../README.md) and uses your **Sign in with ChatGPT**
+account (Settings → *Sign in with ChatGPT*).
 
-`h` hint ladder (nudge → pointer → near-solution, free) · `a` AI hint that reads your actual
-files · `c` run checks · `t` live tutor (interactive Codex) · `r` re-read · `d` done · `q` pause.
+1. **Size the topic.** One quick request: anchors for beginner / intermediate /
+   advanced, with hours and what you can do at each. After that, moving the bar is
+   instant arithmetic.
+2. **Plan.** Skills ranked by real-world value, modules of about 45 minutes, one or two
+   simulations per module, and a capstone scenario.
+3. **Research.** The most up-voted Stack Overflow / Stack Exchange questions for the topic
+   become the real-world failures that lessons warn about and simulations recreate.
+4. **Build.** Lessons, quizzes, flashcards and simulations, in parallel workers sized to
+   your free memory. Module 1 comes first, so **you can start studying while the rest
+   downloads**. Every simulation is checked by a validator (every objective must be
+   achievable, every reference must exist, every regex must compile). If a check fails,
+   the exact problems go back to Codex to fix.
+5. **Done.** The course is a folder of JSON files. Pause and resume any time; only
+   missing pieces are rebuilt.
 
-Outside a session: `guru ask "…"`, `guru tutor`, `guru check`, `guru incident` (a fresh
-break-fix drill built from the issue bank), `guru plan`, `guru clean [--deep]`.
+## Studying
 
-## Light by design
+Each module is **Lesson → Quiz → Simulation(s)**, with spaced-repetition flashcards
+across the course and a capstone at the end. *Continue* always takes you to the next
+step. Progress, mastery per skill and study time are tracked locally. The method and the
+research behind it are in [docs/METHOD.md](docs/METHOD.md).
 
-Guru is a ~1.2 MB binary that uses about 3 MB of RAM while it waits for you. It runs no
-daemon. Before each session it measures free RAM, CPU, disk (respecting container/cgroup
-limits) and installed tools. From those it derives a **hard lab budget**: at most half of
-the free RAM and never more than 40% of total RAM, plus a disk cap, and a decision on
-whether containers or a single-node local cluster are allowed. Every environment Codex
-builds must fit that budget and ship a teardown script, and Guru offers to free everything
-at the end of the hour.
+## Light on your machine
 
-```
-$ guru doctor
-✓ Codex CLI: codex-cli 0.x
-✓ Auth: Logged in using ChatGPT
-✓ Machine: linux x86_64, 8 threads, RAM 16000 MB total / 9800 MB free, disk free 120000 MB
-✓ Lab budget: Large tier · ≤4900 MB RAM · ≤10240 MB disk · ≤4 CPU · containers yes · local cluster no
-```
+Guru uses the operating system's own web view (WebKit on macOS and Linux, WebView2 on
+Windows) instead of shipping a copy of Chromium, so the app binary is about **5.5 MB**.
+Measured on Linux while playing a simulation, the whole app used about **220 MB** of RAM.
+That figure is the proportional set size across Guru's process and WebKit's two helper
+processes, with GPU compositing off, which Guru does by default on Linux. Nothing runs in
+the background when no course is downloading, and simulations need no containers, VMs or
+installs.
 
-## Install
+## Install and run
 
-Requirements: the Codex CLI (`npm i -g @openai/codex`, `brew install --cask codex`, or a
-build from this repository) and a Rust toolchain to build Guru. `curl` is optional and
-enables Stack Exchange mining.
+Requirements: [Rust](https://rustup.rs), the [Codex CLI](https://developers.openai.com/codex)
+(`npm i -g @openai/codex`) for building courses, and on Linux the WebKitGTK development
+packages:
 
 ```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev   # Debian/Ubuntu only
+
 cd guru
-cargo install --path .
-guru login      # Sign in with ChatGPT (runs `codex login`)
-guru doctor
-guru learn "Spring Boot"
+cargo run --release -p guru-app      # starts the desktop app
 ```
 
-To use a Codex built from this repo: `guru config codex_bin /path/to/codex`.
+For installers (`.dmg`, `.msi`, `.deb`, `.AppImage`), use the Tauri CLI:
+`cargo install tauri-cli --version "^2" && cd app && cargo tauri build`.
 
-## Configuration
+To preview the interface in a browser without Rust, serve `ui/` (for example
+`python3 -m http.server -d ui`) and open it. It runs against a mock backend that serves
+the demo course.
 
-`guru config` shows the current configuration; `guru config <key> <value>` sets a key.
+## Project layout
 
-| key | default | |
-|---|---|---|
-| `codex_bin` | `codex` on PATH | the Codex binary (env `GURU_CODEX_BIN` wins) |
-| `model` | Codex default | model passed to Codex |
-| `reasoning_effort` | Codex default | e.g. `medium`, `high` |
-| `web_search` | `true` | let Codex search the live web while planning and writing lessons |
-| `stackexchange` | `true` | mine Stack Exchange for real-world problems |
-| `stackexchange_key` | none | optional API key for a higher daily quota |
-| `hours` / `minutes_per_hour` | `7` / `60` | default course shape (`guru learn --hours --minutes` overrides) |
+```
+guru/
+  core/   guru-core: course package, simulation spec + validator, level bar,
+          download pipeline (drives `codex exec`), spaced repetition, Stack Exchange mining
+  app/    guru-app: the Tauri desktop shell (commands + events)
+  ui/     the interface: plain ES modules, no framework, no build step
+          ui/js/sim/engine.js plays simulations; ui/demo/ is the built-in demo course
+  tools/  generators for the demo course and the app icon
+```
 
-Environment: `GURU_HOME` (data directory, default `~/.guru`), `GURU_READER` or `PAGER`
-(how lessons are shown; default `less -R`), `NO_COLOR`.
-
-## Your data
-
-Everything is plain files in `~/.guru/courses/<topic>/`: `course.json` (plan + learner
-model), `cards.json`, `issues.json` (with source links; Stack Exchange content is CC BY-SA),
-`journal.jsonl`, `lessons/`, `lab/`, `capstone/`, and `AGENTS.md`, which turns interactive
-Codex into your tutor. When git is installed, the course directory is a git repository, so you can diff your
-own progress.
-
-## Development
+## Tests
 
 ```bash
-cargo test        # unit tests + an end-to-end run against a fake Codex (tests/fake_codex.sh)
-cargo clippy --all-targets -- -D warnings
+cargo test --workspace                     # Rust: unit tests + full download pipeline against a fake Codex
+node --test ui/js/sim/engine.test.mjs      # simulation engine: both demo scenarios solved end to end
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Architecture and the Codex contract: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Architecture, the Codex contract and the simulation spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

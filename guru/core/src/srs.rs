@@ -135,7 +135,7 @@ impl Rng {
         Self(nanos | 1)
     }
 
-    pub fn next(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 7;
@@ -146,7 +146,7 @@ impl Rng {
 
     pub fn shuffle<T>(&mut self, items: &mut [T]) {
         for i in (1..items.len()).rev() {
-            let j = (self.next() % (i as u64 + 1)) as usize;
+            let j = (self.next_u64() % (i as u64 + 1)) as usize;
             items.swap(i, j);
         }
     }
